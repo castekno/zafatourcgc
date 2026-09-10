@@ -15,6 +15,7 @@ import {
   AppSettings,
   SeatInfo,
 } from './types';
+import { fetchLiveSeatData } from './services/seatService';
 import {
   getHotels,
   saveHotel,
@@ -69,11 +70,8 @@ export default function App() {
 
   const fetchSeatData = async () => {
     try {
-      const res = await fetch('/api/seats');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        setSeats(data.data.filter((s: SeatInfo) => s.sisaSeat > 0));
-      }
+      const data = await fetchLiveSeatData();
+      setSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0));
     } catch (err) {
       console.error('Error loading seats:', err);
     }

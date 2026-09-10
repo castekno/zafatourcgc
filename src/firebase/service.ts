@@ -71,7 +71,7 @@ export function handleFirestoreError(
   console.warn('Firestore Operation Info:', JSON.stringify(errInfo));
 }
 
-// Lazy initialization of Firebase Firestore targeting dbzafatourcgc
+// Lazy initialization of Firebase Firestore directly targeting dbzafatourcgc client SDK
 let dbInstance: any = null;
 
 export function getFirestoreDb() {
@@ -99,7 +99,7 @@ export function getFirestoreDb() {
   }
 }
 
-// Local storage keys for hybrid sync
+// Local storage cache keys for instant load & offline resilience
 const STORAGE_KEYS = {
   HOTELS: 'zafa_hotels_v1',
   PACKAGES: 'zafa_packages_v1',
@@ -137,10 +137,9 @@ function saveLocal<T>(key: string, data: T): void {
   }
 }
 
-// ==================== HOTELS ====================
+// ==================== HOTELS (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchHotels(): Promise<Hotel[]> {
-  // 1. Prioritize reading directly from Firestore database
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -159,25 +158,11 @@ export async function fetchHotels(): Promise<Hotel[]> {
     }
   }
 
-  // 2. Fallback to server API if offline or initializing
-  try {
-    const res = await fetch('/api/hotels');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        saveLocal(STORAGE_KEYS.HOTELS, data.data);
-        return data.data;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch hotels from server API:', err);
-  }
-
   return loadLocal<Hotel[]>(STORAGE_KEYS.HOTELS, INITIAL_HOTELS);
 }
 
 export async function saveHotelRecord(hotel: Hotel): Promise<void> {
-  // 1. Instant local persistence
+  // 1. Instant local persistence for UI speed
   const current = loadLocal<Hotel[]>(STORAGE_KEYS.HOTELS, INITIAL_HOTELS);
   const idx = current.findIndex((h) => h.id === hotel.id);
   const updated = [...current];
@@ -188,7 +173,7 @@ export async function saveHotelRecord(hotel: Hotel): Promise<void> {
   }
   saveLocal(STORAGE_KEYS.HOTELS, updated);
 
-  // 2. Direct Firestore Database persistence
+  // 2. Direct 100% Firestore Database persistence
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -196,17 +181,6 @@ export async function saveHotelRecord(hotel: Hotel): Promise<void> {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `hotels/${hotel.id}`);
     }
-  }
-
-  // 3. Server-side database API persistence sync
-  try {
-    await fetch('/api/hotels', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(hotel),
-    });
-  } catch (err) {
-    console.error('Failed to save hotel to server API:', err);
   }
 }
 
@@ -216,7 +190,7 @@ export async function deleteHotelRecord(id: string): Promise<void> {
   const updated = current.filter((h) => h.id !== id);
   saveLocal(STORAGE_KEYS.HOTELS, updated);
 
-  // 2. Direct Firestore Database deletion
+  // 2. Direct 100% Firestore Database deletion
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -225,21 +199,11 @@ export async function deleteHotelRecord(id: string): Promise<void> {
       handleFirestoreError(error, OperationType.DELETE, `hotels/${id}`);
     }
   }
-
-  // 3. Server-side database API deletion sync
-  try {
-    await fetch(`/api/hotels/${id}`, {
-      method: 'DELETE',
-    });
-  } catch (err) {
-    console.error('Failed to delete hotel from server API:', err);
-  }
 }
 
-// ==================== PACKAGES ====================
+// ==================== PACKAGES (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchPackages(): Promise<UmrahPackage[]> {
-  // 1. Prioritize reading directly from Firestore database
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -258,20 +222,6 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
     }
   }
 
-  // 2. Fallback to server API if offline or initializing
-  try {
-    const res = await fetch('/api/packages');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        saveLocal(STORAGE_KEYS.PACKAGES, data.data);
-        return data.data;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch packages from server API:', err);
-  }
-
   return loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
 }
 
@@ -287,7 +237,7 @@ export async function savePackageRecord(pkg: UmrahPackage): Promise<void> {
   }
   saveLocal(STORAGE_KEYS.PACKAGES, updated);
 
-  // 2. Direct Firestore Database persistence
+  // 2. Direct 100% Firestore Database persistence
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -295,17 +245,6 @@ export async function savePackageRecord(pkg: UmrahPackage): Promise<void> {
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `packages/${pkg.id}`);
     }
-  }
-
-  // 3. Server-side database API persistence sync
-  try {
-    await fetch('/api/packages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pkg),
-    });
-  } catch (err) {
-    console.error('Failed to save package to server API:', err);
   }
 }
 
@@ -315,7 +254,7 @@ export async function deletePackageRecord(id: string): Promise<void> {
   const updated = current.filter((p) => p.id !== id);
   saveLocal(STORAGE_KEYS.PACKAGES, updated);
 
-  // 2. Direct Firestore Database deletion
+  // 2. Direct 100% Firestore Database deletion
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -324,21 +263,11 @@ export async function deletePackageRecord(id: string): Promise<void> {
       handleFirestoreError(error, OperationType.DELETE, `packages/${id}`);
     }
   }
-
-  // 3. Server-side database API deletion sync
-  try {
-    await fetch(`/api/packages/${id}`, {
-      method: 'DELETE',
-    });
-  } catch (err) {
-    console.error('Failed to delete package from server API:', err);
-  }
 }
 
-// ==================== DOCUMENTATION ====================
+// ==================== DOCUMENTATION (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchDocumentations(): Promise<DocumentationItem[]> {
-  // 1. Prioritize reading directly from Firestore database
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -355,20 +284,6 @@ export async function fetchDocumentations(): Promise<DocumentationItem[]> {
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'documentations');
     }
-  }
-
-  // 2. Fallback to server API if offline or initializing
-  try {
-    const res = await fetch('/api/documentations');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data) && data.data.length > 0) {
-        saveLocal(STORAGE_KEYS.DOCUMENTATION, data.data);
-        return data.data;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch documentations from server API:', err);
   }
 
   return loadLocal<DocumentationItem[]>(
@@ -394,7 +309,7 @@ export async function saveDocumentationRecord(
   }
   saveLocal(STORAGE_KEYS.DOCUMENTATION, updated);
 
-  // 2. Direct Firestore Database persistence
+  // 2. Direct 100% Firestore Database persistence
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -402,17 +317,6 @@ export async function saveDocumentationRecord(
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `documentations/${item.id}`);
     }
-  }
-
-  // 3. Server-side database API persistence sync
-  try {
-    await fetch('/api/documentations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    });
-  } catch (err) {
-    console.error('Failed to save documentation to server API:', err);
   }
 }
 
@@ -425,7 +329,7 @@ export async function deleteDocumentationRecord(id: string): Promise<void> {
   const updated = current.filter((d) => d.id !== id);
   saveLocal(STORAGE_KEYS.DOCUMENTATION, updated);
 
-  // 2. Direct Firestore Database deletion
+  // 2. Direct 100% Firestore Database deletion
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -434,37 +338,15 @@ export async function deleteDocumentationRecord(id: string): Promise<void> {
       handleFirestoreError(error, OperationType.DELETE, `documentations/${id}`);
     }
   }
-
-  // 3. Server-side database API deletion sync
-  try {
-    await fetch(`/api/documentations/${id}`, {
-      method: 'DELETE',
-    });
-  } catch (err) {
-    console.error('Failed to delete documentation from server API:', err);
-  }
 }
 
-// ==================== SETTINGS (LOGO & BRANDING) ====================
+// ==================== SETTINGS (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchSettings(): Promise<AppSettings> {
   const localData = loadLocal<AppSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
   if (!localData.logoUrl || localData.logoUrl.startsWith('data:image/svg')) {
     localData.logoUrl = DEFAULT_ZAFA_LOGO;
     saveLocal(STORAGE_KEYS.SETTINGS, localData);
-  }
-
-  try {
-    const res = await fetch('/api/settings');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data) {
-        saveLocal(STORAGE_KEYS.SETTINGS, data.data);
-        return data.data;
-      }
-    }
-  } catch (err) {
-    console.warn('Could not fetch settings from server API:', err);
   }
 
   const db = getFirestoreDb();
@@ -490,16 +372,6 @@ export async function fetchSettings(): Promise<AppSettings> {
 
 export async function saveSettingsRecord(settings: AppSettings): Promise<void> {
   saveLocal(STORAGE_KEYS.SETTINGS, settings);
-
-  try {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-  } catch (err) {
-    console.error('Failed to save settings to server API:', err);
-  }
 
   const db = getFirestoreDb();
   if (db) {
@@ -527,4 +399,3 @@ export const deleteDocumentation = deleteDocumentationRecord;
 export const getSettings = fetchSettings;
 export const saveSettings = saveSettingsRecord;
 export const DEFAULT_APP_SETTINGS = DEFAULT_SETTINGS;
-

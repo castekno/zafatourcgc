@@ -17,13 +17,19 @@ import {
   Copy,
 } from 'lucide-react';
 import { UmrahPackage, Hotel, ArrivalAirportType, SeatInfo } from '../types';
+import { fetchLiveSeatData } from '../services/seatService';
 import {
   AIRLINES,
   DEPARTURE_AIRPORTS,
   ARRIVAL_AIRPORTS,
 } from '../data/constants';
 import { formatCurrencyIDR, getDistanceToKaaba, getDistanceToNabawi } from '../utils/distance';
-import { checkSeatAvailability, normalizeDateToISO } from '../utils/seatSync';
+import {
+  checkPackageAndSeatAvailability,
+  isTitleMatchingSeatGroup,
+  isDateMatching,
+  normalizeDateToISO,
+} from '../utils/seatSync';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface PackageSectionProps {
@@ -71,12 +77,9 @@ export default function PackageSection({
     if (seats && seats.length > 0) {
       setActiveSeats(seats);
     } else {
-      fetch('/api/seats')
-        .then((res) => res.json())
+      fetchLiveSeatData()
         .then((data) => {
-          if (data.success && Array.isArray(data.data)) {
-            setActiveSeats(data.data.filter((s: SeatInfo) => s.sisaSeat > 0));
-          }
+          setActiveSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0));
         })
         .catch((err) => console.warn('Could not load seats for sync:', err));
     }
@@ -124,8 +127,8 @@ export default function PackageSection({
     ? getDistanceToNabawi(selectedMadinahHotel2.mapUrl, selectedMadinahHotel2.distanceToCenterMeters)
     : '';
 
-  // Live real-time check between departureDate and available seats
-  const seatCheck = checkSeatAvailability(departureDate, activeSeats);
+  // Live real-time check between Nama Paket + Tanggal Berangkat with Nama Group + Tanggal Berangkat in active seats
+  const seatCheck = checkPackageAndSeatAvailability(title, departureDate, activeSeats);
 
   // Otomatis urutkan paket berdasarkan Tanggal Berangkat (Ascending: tanggal paling dekat di awal)
   const sortedPackages = [...packages].sort((a, b) => {
@@ -457,10 +460,12 @@ export default function PackageSection({
                       <span className="truncate">Berangkat: {pkg.departureDate}</span>
                     </div>
                     {(() => {
+                      // Pengecekan dilakukan dengan membandingkan Nama Paket + Tanggal Berangkat di Data Paket
+                      // dengan Nama Group / Paket Umroh + Tanggal Berangkat di Data seat.
                       const matched = activeSeats.find((s) => {
-                        const iso = normalizeDateToISO(s.departureDate);
-                        const pkgIso = normalizeDateToISO(pkg.departureDate);
-                        return (iso && pkgIso && iso === pkgIso) || s.departureDate.includes(pkg.departureDate);
+                        const dateMatches = isDateMatching(pkg.departureDate, s.departureDate);
+                        if (!dateMatches) return false;
+                        return isTitleMatchingSeatGroup(pkg.title, s.group);
                       });
 
                       const isAvailable = matched && matched.sisaSeat > 0;
@@ -476,12 +481,13 @@ export default function PackageSection({
                         );
                       }
 
-                      // Jika seat habis (0) atau tidak ada data seat pada tanggal berangkat yang tertulis
+                      // Jika seat habis (0) atau tidak ada data seat pada tanggal berangkat yang tertulis dengan nama paket yang sesuai:
+                      // Warna dasar hijau menjadi merah ngeblink dengan tulisan putih.
                       return (
                         <span
                           id={`seat-badge-soldout-${pkg.id}`}
                           className="text-[10px] font-extrabold text-white bg-red-600 animate-blink-red px-2 py-0.5 rounded-full shadow-md shrink-0 whitespace-nowrap flex items-center gap-1"
-                          title="Seat telah habis atau belum tersedia untuk tanggal keberangkatan ini"
+                          title="Seat telah habis atau tidak ada pada tanggal berangkat dengan nama paket yang sesuai"
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
                           <span>Seat Habis</span>
@@ -692,8 +698,14 @@ export default function PackageSection({
                     <div className="mb-2">
                       <select
                         onChange={(e) => {
-                          if (e.target.value) {
-                            setDepartureDate(e.target.value);
+                          const val = e.target.value;
+                          if (val) {
+                            const [dateVal, groupVal] = val.split('|||');
+                            setDepartureDate(dateVal);
+                            // Auto-suggest / populate title if title is empty or generic
+                            if (!title.trim() && groupVal) {
+                              setTitle(groupVal);
+                            }
                           }
                         }}
                         className="w-full text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
@@ -702,7 +714,7 @@ export default function PackageSection({
                         {activeSeats.map((s, idx) => {
                           const isoDate = normalizeDateToISO(s.departureDate);
                           return (
-                            <option key={`${s.no}-${idx}`} value={isoDate || s.departureDate}>
+                            <option key={`${s.no}-${idx}`} value={`${isoDate || s.departureDate}|||${s.group}`}>
                               {s.departureDate} — Sisa {s.sisaSeat} Kursi ({s.group})
                             </option>
                           );
@@ -721,7 +733,7 @@ export default function PackageSection({
                   />
 
                   {/* Real-time synchronization message:
-                      "jika tidak ada maka akan muncul pesan Tanggal tidak ada. jika ada maka akan muncul pesan sisa kursi." */}
+                      "Sinkronkan Tanggal Berangkat saat penambahan paket dengan Tanggal Keberangkatan dari Seat yang tersedia, jika tidak ada maka akan muncul pesan Tanggal tidak ada. jika ada maka akan muncul pesan sisa kursi. Pengecekan dilakukan dengan membandingkan Nama Paket + Tanggal Berangkat di Data Paket dengan Nama Group / Paket Umroh + Tanggal Berangkat di Data seat." */}
                   {departureDate && (
                     <div className="mt-2">
                       {seatCheck.isMatched ? (
@@ -732,11 +744,14 @@ export default function PackageSection({
                           </span>
                         </div>
                       ) : (
-                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-xs text-rose-800 font-medium animate-in fade-in">
-                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                          <span>
-                            <strong className="font-bold text-rose-950">Tanggal tidak ada</strong> pada jadwal seat yang tersedia (seat.zafatour.com)
-                          </span>
+                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-800 font-medium animate-in fade-in">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold text-rose-950 block">Tanggal tidak ada</span>
+                            <span className="text-[11px] text-rose-700 leading-tight">
+                              {seatCheck.message}
+                            </span>
+                          </div>
                         </div>
                       )}
                     </div>

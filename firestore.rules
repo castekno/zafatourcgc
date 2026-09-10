@@ -51,6 +51,11 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    match /live_seats/{seatId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Default deny for unmapped paths
     match /{document=**} {
       allow read, write: if false;

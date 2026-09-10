@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { SeatInfo } from '../types';
+import { fetchLiveSeatData } from '../services/seatService';
 
 export default function LiveSeatSection() {
   const searchInputId = useId();
@@ -23,16 +24,10 @@ export default function LiveSeatSection() {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch('/api/seats');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.data)) {
-        // Double filter: only sisaSeat > 0 as requested
-        const filtered = data.data.filter((s: SeatInfo) => s.sisaSeat > 0);
-        setSeats(filtered);
-        setLastUpdated(new Date().toLocaleTimeString('id-ID'));
-      } else {
-        throw new Error(data.error || 'Gagal memuat data');
-      }
+      const data = await fetchLiveSeatData();
+      const filtered = data.filter((s: SeatInfo) => s.sisaSeat > 0);
+      setSeats(filtered);
+      setLastUpdated(new Date().toLocaleTimeString('id-ID'));
     } catch (err: any) {
       setErrorMsg(err.message || 'Gagal mengambil data kursi.');
     } finally {
