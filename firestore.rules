@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Public read for travel landing page visitors and customers
+    match /hotels/{hotelId} {
+      allow read: if true;
+      allow create, update: if isValidId(hotelId)
+        && incoming().name is string && incoming().name.size() > 0
+        && incoming().city in ['Makkah', 'Madinah']
+        && incoming().stars >= 1 && incoming().stars <= 5
+        && incoming().photos is list;
+      allow delete: if true;
+    }
+
+    match /packages/{packageId} {
+      allow read: if true;
+      allow create, update: if isValidId(packageId)
+        && incoming().title is string && incoming().title.size() > 0
+        && incoming().price is number && incoming().price >= 0
+        && incoming().airline is string
+        && incoming().departureAirport is string
+        && incoming().arrivalAirport is string;
+      allow delete: if true;
+    }
+
+    match /documentations/{docId} {
+      allow read: if true;
+      allow create, update: if isValidId(docId)
+        && incoming().title is string && incoming().title.size() > 0
+        && incoming().photos is list;
+      allow delete: if true;
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow create, update: if isValidId(settingId)
+        && incoming().logoUrl is string;
+      allow delete: if true;
+    }
+
+    // Default deny for unmapped paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

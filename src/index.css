@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@keyframes blinkRed {
+  0%, 100% {
+    opacity: 1;
+    background-color: #dc2626;
+  }
+  50% {
+    opacity: 0.25;
+    background-color: #991b1b;
+  }
+}
+
+.animate-blink-red {
+  animation: blinkRed 1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}

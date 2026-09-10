@@ -1,0 +1,8 @@
+{
+  "name": "Data Base ZafaTour CGC Palembang",
+  "description": "Database Travel Umroh \u0026 Haji ZafaTour Perwakilan CitraGrand City Palembang.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

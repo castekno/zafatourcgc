@@ -1,0 +1,94 @@
+{
+  "entities": {
+    "Hotel": {
+      "title": "Hotel",
+      "description": "Master Hotel records for Makkah and Madinah with star ratings, photos up to 6, and location maps",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the hotel" },
+        "name": { "type": "string", "description": "Hotel commercial name" },
+        "city": { "type": "string", "enum": ["Makkah", "Madinah"], "description": "Holy city where hotel is located" },
+        "stars": { "type": "number", "description": "Star classification between 3 and 5" },
+        "address": { "type": "string", "description": "Physical address in Makkah or Madinah" },
+        "photos": { "type": "array", "description": "List of hotel photo URLs or base64 up to 6 images" },
+        "mapUrl": { "type": "string", "description": "Google Maps link or coordinates" },
+        "distanceToCenterMeters": { "type": "number", "description": "Walking/straight distance in meters to Kaaba or Nabawi" },
+        "createdAt": { "type": "string", "description": "Timestamp when created" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id", "name", "city", "stars", "address"]
+    },
+    "Package": {
+      "title": "Package",
+      "description": "Umrah and Hajj packages with airline, airports, departure date, and hotel distance relations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique package ID" },
+        "title": { "type": "string", "description": "Package marketing title" },
+        "packagePhoto": { "type": "string", "description": "Banner photo for package" },
+        "departureDate": { "type": "string", "description": "Departure date string or ISO" },
+        "makkahHotelId": { "type": "string", "description": "Selected Makkah hotel foreign key" },
+        "makkahHotelName": { "type": "string", "description": "Cached Makkah hotel name" },
+        "distanceToKaaba": { "type": "string", "description": "Calculated or displayed distance to Kaaba" },
+        "madinahHotelId": { "type": "string", "description": "Selected Madinah hotel foreign key" },
+        "madinahHotelName": { "type": "string", "description": "Cached Madinah hotel name" },
+        "distanceToNabawi": { "type": "string", "description": "Calculated or displayed distance to Prophet's Mosque center" },
+        "airline": { "type": "string", "description": "Airline name" },
+        "departureAirport": { "type": "string", "description": "International departure airport in Indonesia" },
+        "arrivalAirport": { "type": "string", "description": "Arrival airport in Saudi Arabia (Jeddah or Madinah)" },
+        "price": { "type": "number", "description": "Package price in IDR" },
+        "durationDays": { "type": "number", "description": "Package duration in days" },
+        "createdAt": { "type": "string", "description": "Timestamp when created" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id", "title", "departureDate", "airline", "departureAirport", "arrivalAirport"]
+    },
+    "Documentation": {
+      "title": "Documentation",
+      "description": "Pilgrimage documentation and album events with dynamic image uploads",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Documentation ID" },
+        "title": { "type": "string", "description": "Album or activity title" },
+        "eventDate": { "type": "string", "description": "Event occurrence date" },
+        "photos": { "type": "array", "description": "Dynamic array of photo URLs" },
+        "description": { "type": "string", "description": "Event notes or description" },
+        "createdAt": { "type": "string", "description": "Timestamp when created" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id", "title", "eventDate", "photos"]
+    },
+    "Setting": {
+      "title": "Setting",
+      "description": "System settings including ZafaTour logo and branch details stored in Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Setting key identifier" },
+        "logoUrl": { "type": "string", "description": "Uploaded or saved logo data/url" },
+        "branchName": { "type": "string", "description": "Representative branch name" },
+        "address": { "type": "string", "description": "Office address" },
+        "whatsappNumber": { "type": "string", "description": "Official WhatsApp number" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/hotels/{hotelId}": {
+      "schema": "Hotel",
+      "description": "Master Hotel records for Makkah and Madinah"
+    },
+    "/packages/{packageId}": {
+      "schema": "Package",
+      "description": "Umroh & Hajj package items"
+    },
+    "/documentations/{docId}": {
+      "schema": "Documentation",
+      "description": "Dynamic photo documentation albums"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Application settings including persistent logo stored in Firestore"
+    }
+  }
+}

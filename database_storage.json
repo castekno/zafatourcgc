@@ -1,0 +1,204 @@
+{
+  "hotels": [
+    {
+      "id": "hotel-madinah-1",
+      "stars": 5,
+      "address": "Off Al Sitteen Street, Facing Prophet Mosque Ladies Gate, Madinah",
+      "name": "Dar Al Taqwa Hotel Madinah",
+      "city": "Madinah",
+      "photos": [
+        "https://images.unsplash.com/photo-1565031491910-e57fac030c41?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "distanceToCenterMeters": 40,
+      "mapUrl": "https://maps.google.com/?q=24.4705,39.6115"
+    },
+    {
+      "id": "hotel-madinah-2",
+      "address": "Central Northern Area, Behind the Mosque, Madinah",
+      "name": "Frontel Al Harithia Madinah",
+      "city": "Madinah",
+      "photos": [
+        "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1596436889106-be35e843f974?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "mapUrl": "https://maps.google.com/?q=24.4715,39.6100",
+      "distanceToCenterMeters": 120,
+      "stars": 5
+    },
+    {
+      "id": "hotel-madinah-3",
+      "distanceToCenterMeters": 200,
+      "address": "Northern Central Area, Badaah District, Madinah",
+      "mapUrl": "https://maps.google.com/?q=24.4730,39.6110",
+      "stars": 4,
+      "photos": [
+        "https://images.unsplash.com/photo-1566665797739-1674de7a421a?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "name": "Rove Al Madinah Hotel",
+      "city": "Madinah"
+    },
+    {
+      "id": "hotel-makkah-1",
+      "photos": [
+        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "name": "Pullman Zamzam Makkah",
+      "city": "Makkah",
+      "mapUrl": "https://maps.google.com/?q=21.4190,39.8256",
+      "stars": 5,
+      "distanceToCenterMeters": 50,
+      "address": "Abraj Al Bait Complex, King Abdul Aziz Endowment, Makkah"
+    },
+    {
+      "id": "hotel-makkah-2",
+      "address": "Clock Towers Complex, Ajyad Street, Makkah",
+      "stars": 5,
+      "distanceToCenterMeters": 75,
+      "photos": [
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1564501049412-61c2a3083791?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "city": "Makkah",
+      "name": "Swissotel Al Maqam Makkah",
+      "mapUrl": "https://maps.google.com/?q=21.4195,39.8260"
+    },
+    {
+      "id": "hotel-makkah-3",
+      "address": "Umm Al Qura Street, Harat Al Bab, Makkah",
+      "stars": 5,
+      "name": "Anjum Hotel Makkah",
+      "city": "Makkah",
+      "mapUrl": "https://maps.google.com/?q=21.4262,39.8201",
+      "photos": [
+        "https://images.unsplash.com/photo-1618773928121-c32242e63f39?auto=format&fit=crop&w=1000&q=80",
+        "https://images.unsplash.com/photo-1578683010236-d716f9a3f461?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "distanceToCenterMeters": 300
+    },
+    {
+      "id": "hotel-makkah-4",
+      "photos": [
+        "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=1000&q=80"
+      ],
+      "mapUrl": "https://maps.google.com/?q=21.4050,39.8280",
+      "city": "Makkah",
+      "name": "Le Meridien Towers Makkah",
+      "stars": 4,
+      "distanceToCenterMeters": 900,
+      "address": "Kudai Road, Makkah"
+    }
+  ],
+  "packages": [
+    {
+      "id": "pkg-1",
+      "notes": "Penerbangan langsung direct dari Palembang ke Jeddah. Bimbingan ibadah intensif muthowwif tersertifikasi.",
+      "makkahHotelName": "Pullman Zamzam Makkah",
+      "departureDate": "2026-10-12",
+      "category": "Umroh",
+      "title": "UMRAH REGULER MAHABBAH 11H (Direct GA PLM-JED)",
+      "makkahHotelId": "hotel-makkah-1",
+      "arrivalAirport": "Jedah King Abdulazis",
+      "airline": "Qatar Airways (QR)",
+      "updatedAt": "2026-09-09T11:31:27.586Z",
+      "madinahHotelName": "Dar Al Taqwa Hotel Madinah",
+      "createdAt": "2026-09-09T11:31:27.586Z",
+      "durationDays": 11,
+      "price": 32500000,
+      "distanceToNabawi": "~40 m ke Masjid Nabawi",
+      "packagePhoto": "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=1000&q=80",
+      "departureAirport": "Bandara Sultan Mahmud Badaruddin II Palembang (PLM)",
+      "madinahHotelId": "hotel-madinah-1",
+      "distanceToKaaba": "~50 m ke Ka'bah"
+    },
+    {
+      "id": "pkg-2",
+      "notes": "Paket hemat berkualitas, hotel dekat dan fasilitas makan menu masakan nusantara 3x sehari.",
+      "createdAt": "2026-09-09T02:57:50.420Z",
+      "category": "Umroh",
+      "title": "UMRAH SUPER HEMAT 11H GA-PLM 1448H",
+      "arrivalAirport": "Madinah Mohammad Bin Abdulaziz",
+      "distanceToKaaba": "~300 m ke Ka'bah",
+      "madinahHotelName": "Frontel Al Harithia Madinah",
+      "airline": "Saudia Airlines (SV)",
+      "price": 27900000,
+      "makkahHotelName": "Anjum Hotel Makkah",
+      "durationDays": 11,
+      "departureDate": "2026-10-05",
+      "distanceToNabawi": "~120 m ke Masjid Nabawi",
+      "makkahHotelId": "hotel-makkah-3",
+      "departureAirport": "Bandara Sultan Mahmud Badaruddin II Palembang (PLM)",
+      "packagePhoto": "https://images.unsplash.com/photo-1565031491910-e57fac030c41?auto=format&fit=crop&w=1000&q=80",
+      "updatedAt": "2026-09-09T02:57:50.420Z",
+      "madinahHotelId": "hotel-madinah-2"
+    },
+    {
+      "id": "pkg-3",
+      "packagePhoto": "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1000&q=80",
+      "arrivalAirport": "Jedah King Abdulazis",
+      "makkahHotelName": "Swissotel Al Maqam Makkah",
+      "departureAirport": "Bandara Internasional Soekarno-Hatta Jakarta (CGK)",
+      "distanceToNabawi": "40 m ke Halaman Masjid Nabawi",
+      "departureDate": "2027-05-15",
+      "durationDays": 25,
+      "makkahHotelId": "hotel-makkah-2",
+      "price": 195000000,
+      "madinahHotelName": "Dar Al Taqwa Hotel Madinah",
+      "category": "Haji Khusus",
+      "madinahHotelId": "hotel-madinah-1",
+      "title": "HAJI KHUSUS KEMENAG ZAFA BERKAH MAQBULAH",
+      "distanceToKaaba": "75 m ke Ka'bah / Masjidil Haram",
+      "airline": "Saudia Airlines (SV)",
+      "notes": "Porsi resmi Kemenag RI, tenda VIP ber-AC di Arafah & Mina, bimbingan manasik eksklusif sebelum keberangkatan."
+    }
+  ],
+  "documentations": [
+    {
+      "id": "doc-1",
+      "description": "Suasana khidmat dan penuh haru keberangkatan 45 jamaah Umroh ZafaTour perwakilan Citragrand City Palembang dengan maskapai Garuda Indonesia.",
+      "photos": [
+        "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=900&q=80"
+      ],
+      "eventDate": "2026-08-20",
+      "category": "Keberangkatan Palembang",
+      "title": "Pelepasan Jamaah Umroh ZafaTour CGC di Bandara SMB II Palembang"
+    },
+    {
+      "id": "doc-2",
+      "title": "Tawaf dan Ibadah di Depan Ka'bah Masjidil Haram",
+      "photos": [
+        "https://images.unsplash.com/photo-1591604129939-f1efa4d9f7fa?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&w=900&q=80"
+      ],
+      "category": "Ibadah Makkah",
+      "eventDate": "2026-08-23",
+      "description": "Pelaksanaan tawaf umroh bersama pembimbing muthowwif Ustadz ZafaTour. Jamaah dimudahkan dalam menyelesaikan rukun umroh dengan lancar."
+    },
+    {
+      "id": "doc-3",
+      "category": "Ziarah Madinah",
+      "title": "Ziarah Raudhah dan Masjid Nabawi Madinah Al-Munawwarah",
+      "eventDate": "2026-08-28",
+      "photos": [
+        "https://images.unsplash.com/photo-1565031491910-e57fac030c41?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1596436889106-be35e843f974?auto=format&fit=crop&w=900&q=80"
+      ],
+      "description": "Agenda ziarah Raudhah Syarifah yang telah dijadwalkan via aplikasi Nusuk dan city tour Jabal Uhud serta Masjid Quba."
+    }
+  ],
+  "settings": {
+    "logoUrl": "/zafa_logo.jpg",
+    "branchName": "ZafaTour Perwakilan Citragrand City Palembang",
+    "address": "Ruko CitraGrand City Blok A No. 12, Jl. Bypass Alang-Alang Lebar, Palembang, Sumatera Selatan",
+    "phone": "0811-715-608",
+    "whatsappNumber": "0811-715-608",
+    "firebaseProjectId": "zafatourcgc-e4b5f",
+    "firestoreDatabaseName": "dbzafatourcgc"
+  }
+}
