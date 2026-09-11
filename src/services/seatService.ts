@@ -1,5 +1,6 @@
 import { SeatInfo } from '../types';
 import { getFirestoreDb, handleFirestoreError, OperationType } from '../firebase/service';
+import { loadLocal, saveLocal } from '../firebase/storageHelper';
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 
 // DATA ASLI LANGSUNG DARI https://seat.zafatour.com/
@@ -115,7 +116,7 @@ export async function fetchLiveSeatData(): Promise<SeatInfo[]> {
         });
         if (list.length > 0) {
           list.sort((a, b) => a.no - b.no);
-          localStorage.setItem(LOCAL_SEATS_CACHE, JSON.stringify(list));
+          saveLocal(LOCAL_SEATS_CACHE, list);
           return list;
         }
       }
@@ -143,7 +144,7 @@ export async function fetchLiveSeatData(): Promise<SeatInfo[]> {
         const html = await res.text();
         const parsed = parseZafaHtml(html);
         if (parsed.length > 0) {
-          localStorage.setItem(LOCAL_SEATS_CACHE, JSON.stringify(parsed));
+          saveLocal(LOCAL_SEATS_CACHE, parsed);
           return parsed;
         }
       }
@@ -153,16 +154,9 @@ export async function fetchLiveSeatData(): Promise<SeatInfo[]> {
   }
 
   // 3. Cek local cache
-  try {
-    const cached = localStorage.getItem(LOCAL_SEATS_CACHE);
-    if (cached) {
-      const parsedCache: SeatInfo[] = JSON.parse(cached);
-      if (Array.isArray(parsedCache) && parsedCache.length > 0) {
-        return parsedCache;
-      }
-    }
-  } catch (e) {
-    console.warn('Local cache read error:', e);
+  const cached = loadLocal<SeatInfo[]>(LOCAL_SEATS_CACHE, []);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
   }
 
   // 4. Fallback ke data terverifikasi asli 100% tepat dari https://seat.zafatour.com/

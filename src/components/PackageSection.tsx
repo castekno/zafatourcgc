@@ -24,6 +24,7 @@ import {
   ARRIVAL_AIRPORTS,
 } from '../data/constants';
 import { formatCurrencyIDR, getDistanceToKaaba, getDistanceToNabawi } from '../utils/distance';
+import { compressImageFile } from '../utils/imageCompress';
 import {
   checkPackageAndSeatAvailability,
   isTitleMatchingSeatGroup,
@@ -192,15 +193,21 @@ export default function PackageSection({
     setIsModalOpen(true);
   };
 
-  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64 = ev.target?.result as string;
-        setPackagePhoto(base64);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImageFile(file, 1024, 800, 0.75);
+        setPackagePhoto(compressedBase64);
+      } catch (err) {
+        console.warn('Error compressing image, fallback to standard reader:', err);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const base64 = ev.target?.result as string;
+          setPackagePhoto(base64);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

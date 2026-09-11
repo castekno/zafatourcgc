@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Hotel, CityType } from '../types';
 import { getDistanceToKaaba, getDistanceToNabawi } from '../utils/distance';
+import { compressImageFile } from '../utils/imageCompress';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface HotelMasterSectionProps {
@@ -122,15 +123,21 @@ export default function HotelMasterSection({
     });
   };
 
-  const handleFileUpload = (index: number, e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (index: number, e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const base64 = uploadEvent.target?.result as string;
-        handlePhotoUrlChange(index, base64);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImageFile(file, 1024, 1024, 0.75);
+        handlePhotoUrlChange(index, compressedBase64);
+      } catch (err) {
+        console.warn('Error compressing image, fallback to standard reader:', err);
+        const reader = new FileReader();
+        reader.onload = (uploadEvent) => {
+          const base64 = uploadEvent.target?.result as string;
+          handlePhotoUrlChange(index, base64);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

@@ -12,6 +12,7 @@ import {
 import { AppSettings } from '../types';
 import { FIREBASE_PROJECT_INFO } from '../firebase/service';
 import { DEFAULT_ZAFA_LOGO } from '../data/constants';
+import { compressImageFile } from '../utils/imageCompress';
 
 interface AdminSettingsModalProps {
   isOpen: boolean;
@@ -39,15 +40,21 @@ export default function AdminSettingsModal({
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64 = ev.target?.result as string;
-        setLogoUrl(base64);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImageFile(file, 512, 512, 0.85);
+        setLogoUrl(compressedBase64);
+      } catch (err) {
+        console.warn('Error compressing logo:', err);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const base64 = ev.target?.result as string;
+          setLogoUrl(base64);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

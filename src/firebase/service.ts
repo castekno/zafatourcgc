@@ -20,6 +20,7 @@ import {
   DEFAULT_ZAFA_LOGO,
   WHATSAPP_NUMBER,
 } from '../data/constants';
+import { loadLocal, saveLocal } from './storageHelper';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const FIREBASE_PROJECT_INFO = {
@@ -117,25 +118,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   firebaseProjectId: FIREBASE_PROJECT_INFO.projectId,
   firestoreDatabaseName: FIREBASE_PROJECT_INFO.firestoreDatabaseName,
 };
-
-// Helper: Local fallback loader
-function loadLocal<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed to read from local storage:', e);
-  }
-  return fallback;
-}
-
-function saveLocal<T>(key: string, data: T): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch (e) {
-    console.error('Failed to save to local storage:', e);
-  }
-}
 
 // ==================== HOTELS (100% FIRESTORE CLIENT SDK) ====================
 

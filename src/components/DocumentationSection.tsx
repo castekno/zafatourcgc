@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { DocumentationItem } from '../types';
+import { compressImageFile } from '../utils/imageCompress';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface DocumentationSectionProps {
@@ -100,18 +101,24 @@ export default function DocumentationSection({
   };
 
   // Single file upload
-  const handleSingleFileUpload = (
+  const handleSingleFileUpload = async (
     index: number,
     e: ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64 = ev.target?.result as string;
-        handlePhotoChange(index, base64);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImageFile(file, 1024, 1024, 0.75);
+        handlePhotoChange(index, compressedBase64);
+      } catch (err) {
+        console.warn('Error compressing image:', err);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const base64 = ev.target?.result as string;
+          handlePhotoChange(index, base64);
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
@@ -120,19 +127,29 @@ export default function DocumentationSection({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const base64 = ev.target?.result as string;
+    Array.from(files).forEach(async (file: File) => {
+      try {
+        const compressedBase64 = await compressImageFile(file, 1024, 1024, 0.75);
         setPhotosList((prev) => {
-          // If first item is empty string, replace it
           if (prev.length === 1 && prev[0] === '') {
-            return [base64];
+            return [compressedBase64];
           }
-          return [...prev, base64];
+          return [...prev, compressedBase64];
         });
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.warn('Error compressing image:', err);
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const base64 = ev.target?.result as string;
+          setPhotosList((prev) => {
+            if (prev.length === 1 && prev[0] === '') {
+              return [base64];
+            }
+            return [...prev, base64];
+          });
+        };
+        reader.readAsDataURL(file);
+      }
     });
   };
 
