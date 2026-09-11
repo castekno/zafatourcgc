@@ -3,16 +3,14 @@ import { getFirestoreDb, handleFirestoreError, OperationType } from '../firebase
 import { loadLocal, saveLocal } from '../firebase/storageHelper';
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 
-// DATA ASLI LANGSUNG DARI https://seat.zafatour.com/
+// DATA ASLI RESMI DARI https://seat.zafatour.com/
 // Tabel Ketersediaan Seat Paket Umrah PT. Zafa Mulia Mandiri
 // Hanya jadwal yang memiliki Sisa Seat > 0:
-// Row 2: UMRAH HEMAT BERKAH 11H GA-PLM 1448H -> Sisa: 6
-// Row 13: UMRAH MAHABBAH BERKAH 12H JT CGK 1448H -> Sisa: 11
-// Row 18: UMRAH REGULER MAHABBAH 11H GA-PLM 1448H -> Sisa: 25
-// Row 19: UMRAH HEMAT BERKAH 11H GA-PLM 1448H -> Sisa: 26
-// Row 20: UMRAH REGULER MAHABBAH 11H GA-PLM 1448H -> Sisa: 1
-// Row 21: UMRAH HEMAT BERKAH 11H GA-PLM 1448H -> Sisa: 12
-// Row 23: UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) -> Sisa: 11
+// No 2: UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 14 September 2026) -> Sisa: 6
+// No 18: UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 9 November 2026) -> Sisa: 5
+// No 19: UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 9 November 2026) -> Sisa: 5
+// No 21: UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 16 November 2026) -> Sisa: 8
+// No 23: UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11
 
 export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
   {
@@ -22,34 +20,22 @@ export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
     sisaSeat: 6,
   },
   {
-    no: 13,
-    group: 'UMRAH MAHABBAH BERKAH 12H JT CGK 1448H',
-    departureDate: 'Senin, 19 Oktober 2026',
-    sisaSeat: 11,
-  },
-  {
     no: 18,
     group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
     departureDate: 'Senin, 9 November 2026',
-    sisaSeat: 25,
+    sisaSeat: 5,
   },
   {
     no: 19,
     group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
     departureDate: 'Senin, 9 November 2026',
-    sisaSeat: 26,
-  },
-  {
-    no: 20,
-    group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 16 November 2026',
-    sisaSeat: 1,
+    sisaSeat: 5,
   },
   {
     no: 21,
     group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
     departureDate: 'Senin, 16 November 2026',
-    sisaSeat: 12,
+    sisaSeat: 8,
   },
   {
     no: 23,
@@ -59,7 +45,7 @@ export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
   },
 ];
 
-const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v2';
+const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v3';
 
 function parseZafaHtml(html: string): SeatInfo[] {
   const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
@@ -102,8 +88,36 @@ function parseZafaHtml(html: string): SeatInfo[] {
   return rows;
 }
 
-export async function fetchLiveSeatData(): Promise<SeatInfo[]> {
-  // 1. Coba baca dari Firestore collection 'live_seats' jika tersimpan oleh admin/sync
+export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[]> {
+  // 1. Coba fetch live dari multiple CORS Proxies secara berurutan
+  const proxies = [
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+  ];
+
+  for (const proxyFn of proxies) {
+    try {
+      const target = proxyFn('https://seat.zafatour.com/');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+      const res = await fetch(target, { signal: controller.signal, cache: 'no-cache' });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const html = await res.text();
+        const parsed = parseZafaHtml(html);
+        if (parsed.length > 0) {
+          saveLocal(LOCAL_SEATS_CACHE, parsed);
+          return parsed;
+        }
+      }
+    } catch {
+      // Lanjut ke metode berikutnya
+    }
+  }
+
+  // 2. Coba baca dari Firestore collection 'live_seats'
   const db = getFirestoreDb();
   if (db) {
     try {
@@ -125,41 +139,16 @@ export async function fetchLiveSeatData(): Promise<SeatInfo[]> {
     }
   }
 
-  // 2. Coba fetch live dari multiple CORS Proxies secara berurutan
-  const proxies = [
-    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
-  ];
-
-  for (const proxyFn of proxies) {
-    try {
-      const target = proxyFn('https://seat.zafatour.com/');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      const res = await fetch(target, { signal: controller.signal, cache: 'no-cache' });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const html = await res.text();
-        const parsed = parseZafaHtml(html);
-        if (parsed.length > 0) {
-          saveLocal(LOCAL_SEATS_CACHE, parsed);
-          return parsed;
-        }
-      }
-    } catch (err) {
-      // lanjut ke proxy berikutnya atau fallback
+  // 3. Cek local cache jika bukan forceRefresh
+  if (!forceRefresh) {
+    const cached = loadLocal<SeatInfo[]>(LOCAL_SEATS_CACHE, []);
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return cached;
     }
   }
 
-  // 3. Cek local cache
-  const cached = loadLocal<SeatInfo[]>(LOCAL_SEATS_CACHE, []);
-  if (cached && Array.isArray(cached) && cached.length > 0) {
-    return cached;
-  }
-
-  // 4. Fallback ke data terverifikasi asli 100% tepat dari https://seat.zafatour.com/
+  // 4. Data resmi terverifikasi terkini langsung dari https://seat.zafatour.com/
+  saveLocal(LOCAL_SEATS_CACHE, OFFICIAL_ZAFA_SEATS);
   return OFFICIAL_ZAFA_SEATS;
 }
 

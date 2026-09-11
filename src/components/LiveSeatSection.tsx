@@ -4,10 +4,8 @@ import {
   Search,
   RefreshCw,
   ExternalLink,
-  MessageCircle,
   Calendar,
   ShieldAlert,
-  ArrowUpRight,
 } from 'lucide-react';
 import { SeatInfo } from '../types';
 import { fetchLiveSeatData } from '../services/seatService';
@@ -20,11 +18,11 @@ export default function LiveSeatSection() {
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const fetchSeatData = async () => {
+  const fetchSeatData = async (forceRefresh = false) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const data = await fetchLiveSeatData();
+      const data = await fetchLiveSeatData(forceRefresh);
       const filtered = data.filter((s: SeatInfo) => s.sisaSeat > 0);
       setSeats(filtered);
       setLastUpdated(new Date().toLocaleTimeString('id-ID'));
@@ -36,7 +34,8 @@ export default function LiveSeatSection() {
   };
 
   useEffect(() => {
-    fetchSeatData();
+    // Selalu refresh data terbaru saat web dibuka
+    fetchSeatData(true);
   }, []);
 
   const filteredSeats = seats.filter(
@@ -44,13 +43,6 @@ export default function LiveSeatSection() {
       s.group.toLowerCase().includes(searchTerm.toLowerCase()) ||
       s.departureDate.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleBookingWA = (seat: SeatInfo) => {
-    const text = encodeURIComponent(
-      `Halo ZafaTour Perwakilan CGC Palembang, saya berminat mendaftar untuk:\n\n*Group:* ${seat.group}\n*Tanggal Berangkat:* ${seat.departureDate}\n*Sisa Seat:* ${seat.sisaSeat} kursi\n\nMohon info ketersediaan dan syarat pendaftaran.`
-    );
-    window.open(`https://wa.me/62811715608?text=${text}`, '_blank');
-  };
 
   return (
     <section id="seats" className="py-16 bg-slate-50 border-y border-blue-100">
@@ -87,7 +79,7 @@ export default function LiveSeatSection() {
             )}
             <button
               id="btn-refresh-seats"
-              onClick={fetchSeatData}
+              onClick={() => fetchSeatData(true)}
               disabled={loading}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200 rounded-xl shadow-sm transition-all disabled:opacity-50"
             >
@@ -150,7 +142,6 @@ export default function LiveSeatSection() {
                     <th className="py-3.5 px-4">Nama Group / Paket Umroh</th>
                     <th className="py-3.5 px-4">Tanggal Keberangkatan</th>
                     <th className="py-3.5 px-4 text-center">Sisa Seat</th>
-                    <th className="py-3.5 px-4 text-right">Aksi Booking</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -186,17 +177,6 @@ export default function LiveSeatSection() {
                           <Users className="w-3 h-3" />
                           {item.sisaSeat} Kursi
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          id={`btn-book-seat-${item.no}`}
-                          onClick={() => handleBookingWA(item)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm transition-all active:scale-95"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span>Pesan Seat</span>
-                          <ArrowUpRight className="w-3 h-3 opacity-70" />
-                        </button>
                       </td>
                     </tr>
                   ))}
