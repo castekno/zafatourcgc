@@ -17,11 +17,20 @@ export type ArrivalAirportType =
   | 'Jedah King Abdulazis'
   | 'Madinah Mohammad Bin Abdulaziz';
 
+export interface SeatSchedule {
+  departureDate: string;
+  sisaSeat: number;
+}
+
+export type PackageCategoryType = 'UMRAH' | 'HAJI' | 'HAJI KHUSUS';
+
 export interface UmrahPackage {
   id: string;
   title: string;
   packagePhoto: string;
   departureDate: string;
+  departureDates?: string[]; // All departure dates matching this package from online seat data
+  seatSchedules?: SeatSchedule[]; // Sisa seat breakdown per date
   makkahHotelId: string;
   makkahHotelName?: string;
   distanceToKaaba?: string; // calculated from Makkah hotel to Kaaba
@@ -36,10 +45,10 @@ export interface UmrahPackage {
   distanceToNabawi2?: string;
   airline: string;
   departureAirport: string;
-  arrivalAirport: ArrivalAirportType;
+  arrivalAirport: ArrivalAirportType | string;
   price: number;
   durationDays: number;
-  category: 'Umroh' | 'Haji Khusus';
+  category: PackageCategoryType | string;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;

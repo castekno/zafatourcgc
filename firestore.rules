@@ -56,6 +56,10 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    match /test/{testId} {
+      allow read: if true;
+    }
+
     // Default deny for unmapped paths
     match /{document=**} {
       allow read, write: if false;

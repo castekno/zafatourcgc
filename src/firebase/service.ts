@@ -6,12 +6,16 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  getDocFromServer,
 } from 'firebase/firestore';
 import {
   Hotel,
   UmrahPackage,
   DocumentationItem,
   AppSettings,
+  SeatInfo,
+  SeatSchedule,
+  PackageCategoryType,
 } from '../types';
 import {
   INITIAL_HOTELS,
@@ -97,6 +101,20 @@ export function getFirestoreDb() {
   } catch (err) {
     console.warn('Firebase init warning:', err);
     return null;
+  }
+}
+
+export async function testConnection(): Promise<boolean> {
+  const db = getFirestoreDb();
+  if (!db) return false;
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    return true;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error('Please check your Firebase configuration.');
+    }
+    return false;
   }
 }
 
@@ -247,6 +265,222 @@ export async function deletePackageRecord(id: string): Promise<void> {
   }
 }
 
+/**
+ * Kategori Paket: "UMRAH", "HAJI", atau "HAJI KHUSUS".
+ * Diambil dari 5 digit diawal nama Paket atau kata kunci judul.
+ */
+export function getCategoryFromTitle(title: string): PackageCategoryType {
+  const clean = (title || '').trim().toUpperCase();
+  if (clean.includes('HAJI KHUSUS') || clean.includes('HAJI PLUS') || clean.includes('HAJI FURODA')) {
+    return 'HAJI KHUSUS';
+  }
+  const first5 = clean.slice(0, 5);
+  if (first5.startsWith('HAJI')) {
+    return 'HAJI';
+  }
+  if (first5.startsWith('UMRA') || first5.startsWith('UMRO')) {
+    return 'UMRAH';
+  }
+  if (clean.includes('HAJI')) {
+    return 'HAJI';
+  }
+  return 'UMRAH';
+}
+
+export function slugifyPackageTitle(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
+    .slice(0, 60);
+  return `pkg-${slug || Date.now()}`;
+}
+
+/**
+ * Hapus semua data dari database paket (Firestore & LocalStorage)
+ */
+export async function clearAllPackages(): Promise<void> {
+  saveLocal(STORAGE_KEYS.PACKAGES, []);
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const snap = await getDocs(collection(db, 'packages'));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, 'packages', d.id));
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'packages');
+    }
+  }
+}
+
+/**
+ * Sinkronisasi data paket dari data seat Online:
+ * 1. Paket yang ada di Seat akan menjadi nama paket di database paket.
+ * 2. Paket hanya dibuat satu nama walau di data seat ada beberapa nama yang sama.
+ * 3. Jika nama paket di data seat belum ada di database paket -> buat baru (foto, hotel, maskapai dikosongkan dulu, update via admin).
+ * 4. Jika nama sudah terdaftar di database paket -> jangan dibuat baru, hanya refresh tanggal keberangkatan.
+ * 5. Kategori Paket: "UMRAH", "HAJI", atau "HAJI KHUSUS".
+ * 6. Tanggal-tanggal dari data seat untuk yang nama paketnya sama ditampilkan lengkap.
+ * 7. Jika tanggal sudah tidak ada semua di seat online, tanggal keberangkatan dikosongkan sehingga memunculkan status Paket Habis.
+ */
+export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<UmrahPackage[]> {
+  if (!seats || seats.length === 0) {
+    return fetchPackages();
+  }
+
+  // 1. Kelompokkan data seat berdasarkan nama paket (group)
+  const groupedSeats = new Map<string, { displayTitle: string; schedules: SeatSchedule[] }>();
+
+  for (const seat of seats) {
+    const trimmedTitle = (seat.group || '').trim();
+    if (!trimmedTitle) continue;
+    const key = trimmedTitle.toLowerCase();
+
+    if (!groupedSeats.has(key)) {
+      groupedSeats.set(key, { displayTitle: trimmedTitle, schedules: [] });
+    }
+    const entry = groupedSeats.get(key)!;
+    if (!entry.schedules.some((s) => s.departureDate === seat.departureDate)) {
+      entry.schedules.push({
+        departureDate: seat.departureDate,
+        sisaSeat: seat.sisaSeat,
+      });
+    }
+  }
+
+  // 2. Ambil paket yang sudah ada dari database paket
+  const existingPackages = await fetchPackages();
+  const db = getFirestoreDb();
+  const existingMap = new Map<string, UmrahPackage>();
+
+  for (const pkg of existingPackages) {
+    const key = (pkg.title || '').trim().toLowerCase();
+    if (key && !existingMap.has(key)) {
+      existingMap.set(key, pkg);
+    }
+  }
+
+  const resultPackages: UmrahPackage[] = [];
+
+  // 3. Proses setiap nama paket unik dari data seat
+  for (const [key, entry] of groupedSeats.entries()) {
+    const dates = entry.schedules.map((s) => s.departureDate);
+    const primaryDate = dates[0] || '';
+    const existing = existingMap.get(key);
+
+    if (existing) {
+      // JIKA NAMA SUDAH TERDAFTAR: JANGAN CREATE BARU!
+      // Hanya refresh tanggal keberangkatan & jadwal seat, pertahankan foto, hotel, maskapai, harga yang sudah diupdate admin
+      const currentCat = existing.category;
+      const normalizedCategory =
+        currentCat === 'Umroh'
+          ? 'UMRAH'
+          : currentCat === 'Haji Khusus'
+          ? 'HAJI KHUSUS'
+          : (currentCat || getCategoryFromTitle(existing.title));
+
+      const updatedPkg: UmrahPackage = {
+        ...existing,
+        category: normalizedCategory,
+        departureDate: primaryDate || existing.departureDate,
+        departureDates: dates,
+        seatSchedules: entry.schedules,
+        updatedAt: new Date().toISOString(),
+      };
+      resultPackages.push(updatedPkg);
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
+        }
+      }
+    } else {
+      // JIKA BELUM ADA DI DATABASE: BUAT DATA PAKET BARU
+      // Data foto, hotel, maskapai dikosongkan dulu saat pertama kali creat otomatis
+      const durationMatch = entry.displayTitle.match(/(\d+)\s*H\b/i);
+      const parsedDuration = durationMatch ? parseInt(durationMatch[1], 10) : 0;
+
+      const newPkg: UmrahPackage = {
+        id: slugifyPackageTitle(entry.displayTitle),
+        title: entry.displayTitle,
+        category: getCategoryFromTitle(entry.displayTitle),
+        packagePhoto: '',
+        departureDate: primaryDate,
+        departureDates: dates,
+        seatSchedules: entry.schedules,
+        makkahHotelId: '',
+        makkahHotelName: '',
+        distanceToKaaba: '',
+        makkahHotel2Id: '',
+        makkahHotel2Name: '',
+        distanceToKaaba2: '',
+        madinahHotelId: '',
+        madinahHotelName: '',
+        distanceToNabawi: '',
+        madinahHotel2Id: '',
+        madinahHotel2Name: '',
+        distanceToNabawi2: '',
+        airline: '',
+        departureAirport: '',
+        arrivalAirport: '',
+        price: 0,
+        durationDays: parsedDuration,
+        notes: '',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      resultPackages.push(newPkg);
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'packages', newPkg.id), newPkg);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `packages/${newPkg.id}`);
+        }
+      }
+    }
+  }
+
+  // 4. Sertakan juga paket di database yang tanggalnya sudah tidak ada di data seat online
+  // Kosongkan tanggal keberangkatan agar memunculkan info "Paket Habis"
+  for (const [key, pkg] of existingMap.entries()) {
+    if (!groupedSeats.has(key)) {
+      const currentCat = pkg.category;
+      const normalizedCategory =
+        currentCat === 'Umroh'
+          ? 'UMRAH'
+          : currentCat === 'Haji Khusus'
+          ? 'HAJI KHUSUS'
+          : (currentCat || getCategoryFromTitle(pkg.title));
+
+      const updatedPkg: UmrahPackage = {
+        ...pkg,
+        category: normalizedCategory,
+        departureDates: [], // Tanggal sudah tidak ada di seat online
+        seatSchedules: [],
+        updatedAt: new Date().toISOString(),
+      };
+      resultPackages.push(updatedPkg);
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
+        }
+      }
+    }
+  }
+
+  // 5. Simpan ke local storage
+  saveLocal(STORAGE_KEYS.PACKAGES, resultPackages);
+
+  return resultPackages;
+}
+
 // ==================== DOCUMENTATION (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchDocumentations(): Promise<DocumentationItem[]> {
@@ -373,6 +607,8 @@ export const deleteHotel = deleteHotelRecord;
 export const getPackages = fetchPackages;
 export const savePackage = savePackageRecord;
 export const deletePackage = deletePackageRecord;
+export const syncPackagesWithSeats = syncPackagesFromSeatData;
+export const clearPackages = clearAllPackages;
 
 export const getDocumentations = fetchDocumentations;
 export const saveDocumentation = saveDocumentationRecord;

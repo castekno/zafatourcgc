@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
-import HeroBanner from './components/HeroBanner';
 import LiveSeatSection from './components/LiveSeatSection';
 import HotelMasterSection from './components/HotelMasterSection';
 import PackageSection from './components/PackageSection';
@@ -23,12 +22,15 @@ import {
   getPackages,
   savePackage,
   deletePackage,
+  syncPackagesWithSeats,
+  clearPackages,
   getDocumentations,
   saveDocumentation,
   deleteDocumentation,
   getSettings,
   saveSettings,
   DEFAULT_APP_SETTINGS,
+  testConnection,
 } from './firebase/service';
 
 export default function App() {
@@ -47,20 +49,38 @@ export default function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('hero');
 
-  // Load data from persistent service
+  // Load data and automatically sync packages with live seat data
   const loadAllData = async () => {
     setLoading(true);
     try {
-      const [hList, pList, dList, sData] = await Promise.all([
+      // 1. Fetch seat data
+      let allSeats: SeatInfo[] = [];
+      try {
+        const rawSeats = await fetchLiveSeatData(true);
+        allSeats = rawSeats;
+        const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0);
+        setSeats(availableSeats);
+      } catch (seatErr) {
+        console.warn('Seat fetch fallback in loadAllData:', seatErr);
+      }
+
+      // 2. Fetch hotels, documentations, and settings (untouched)
+      const [hList, dList, sData] = await Promise.all([
         getHotels(),
-        getPackages(),
         getDocumentations(),
         getSettings(),
       ]);
       setHotels(hList);
-      setPackages(pList);
       setDocumentations(dList);
       setSettings(sData);
+
+      // 3. Synchronize package database with online seat data every load/refresh:
+      // - Packages from seat data become package names in database
+      // - If already exists, refresh latest departure dates & seat counts
+      // - If all dates are gone, departureDates becomes empty -> "Paket Habis"
+      // - Category: "UMRAH", "HAJI", "HAJI KHUSUS"
+      const syncedPackages = await syncPackagesWithSeats(allSeats);
+      setPackages(syncedPackages);
     } catch (err) {
       console.error('Error loading data:', err);
     } finally {
@@ -68,19 +88,27 @@ export default function App() {
     }
   };
 
-  const fetchSeatData = async () => {
+  useEffect(() => {
+    testConnection();
+    loadAllData();
+  }, []);
+
+  const handleSyncPackages = async () => {
     try {
-      const data = await fetchLiveSeatData();
-      setSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0));
+      const rawSeats = await fetchLiveSeatData(true);
+      const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0);
+      setSeats(availableSeats);
+      const synced = await syncPackagesWithSeats(rawSeats);
+      setPackages(synced);
     } catch (err) {
-      console.error('Error loading seats:', err);
+      console.error('Error manually syncing packages with seats:', err);
     }
   };
 
-  useEffect(() => {
-    loadAllData();
-    fetchSeatData();
-  }, []);
+  const handleClearPackages = async () => {
+    await clearPackages();
+    setPackages([]);
+  };
 
   // Admin Login / Logout
   const handleLoginSuccess = () => {
@@ -151,16 +179,6 @@ export default function App() {
         onSelectSection={setActiveSection}
       />
 
-      {/* Hero Section */}
-      <HeroBanner
-        onExplorePackages={() => {
-          document.getElementById('packages')?.scrollIntoView({ behavior: 'smooth' });
-        }}
-        onCheckSeats={() => {
-          document.getElementById('seats')?.scrollIntoView({ behavior: 'smooth' });
-        }}
-      />
-
       {/* Main Content */}
       <main className="flex-grow">
         {/* Group 1: Group Paket Haji & Umroh */}
@@ -171,6 +189,8 @@ export default function App() {
           isAdmin={isAdmin}
           onSavePackage={handleSavePackage}
           onDeletePackage={handleDeletePackage}
+          onSyncWithSeats={handleSyncPackages}
+          onClearPackages={handleClearPackages}
         />
 
         {/* Master Hotel (Makkah & Madinah, up to 6 photos, star, map, distance) */}

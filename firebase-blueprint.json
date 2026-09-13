@@ -27,6 +27,8 @@
         "title": { "type": "string", "description": "Package marketing title" },
         "packagePhoto": { "type": "string", "description": "Banner photo for package" },
         "departureDate": { "type": "string", "description": "Departure date string or ISO" },
+        "departureDates": { "type": "array", "description": "List of departure dates synchronized from live online seat data" },
+        "category": { "type": "string", "enum": ["Umroh", "Haji Khusus"], "description": "Package category determined by first 5 characters" },
         "makkahHotelId": { "type": "string", "description": "Selected Makkah hotel foreign key" },
         "makkahHotelName": { "type": "string", "description": "Cached Makkah hotel name" },
         "distanceToKaaba": { "type": "string", "description": "Calculated or displayed distance to Kaaba" },

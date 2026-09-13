@@ -9,14 +9,15 @@ import {
   Edit2,
   Trash2,
   Upload,
-  MessageCircle,
   X,
   Compass,
   CheckCircle2,
   AlertCircle,
   Copy,
+  RefreshCw,
+  Maximize2,
 } from 'lucide-react';
-import { UmrahPackage, Hotel, ArrivalAirportType, SeatInfo } from '../types';
+import { UmrahPackage, Hotel, ArrivalAirportType, SeatInfo, SeatSchedule, PackageCategoryType } from '../types';
 import { fetchLiveSeatData } from '../services/seatService';
 import {
   AIRLINES,
@@ -31,6 +32,7 @@ import {
   isDateMatching,
   normalizeDateToISO,
 } from '../utils/seatSync';
+import { getCategoryFromTitle } from '../firebase/service';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface PackageSectionProps {
@@ -40,6 +42,8 @@ interface PackageSectionProps {
   isAdmin: boolean;
   onSavePackage: (pkg: UmrahPackage) => Promise<void>;
   onDeletePackage: (id: string) => Promise<void>;
+  onSyncWithSeats?: () => Promise<void>;
+  onClearPackages?: () => Promise<void>;
 }
 
 export default function PackageSection({
@@ -49,6 +53,8 @@ export default function PackageSection({
   isAdmin,
   onSavePackage,
   onDeletePackage,
+  onSyncWithSeats,
+  onClearPackages,
 }: PackageSectionProps) {
   const pkgCategoryFilterId = useId();
   const pkgTitleInputId = useId();
@@ -66,10 +72,11 @@ export default function PackageSection({
   const pkgPhotoInputId = useId();
   const pkgNotesInputId = useId();
 
-  const [categoryFilter, setCategoryFilter] = useState<'All' | 'Umroh' | 'Haji Khusus'>('All');
+  const [categoryFilter, setCategoryFilter] = useState<'All' | PackageCategoryType>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPkg, setEditingPkg] = useState<UmrahPackage | null>(null);
   const [deletePkgTarget, setDeletePkgTarget] = useState<{ id: string; title: string } | null>(null);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   // Local active seats state (synced with props or fetched as fallback)
   const [activeSeats, setActiveSeats] = useState<SeatInfo[]>(seats);
@@ -90,7 +97,7 @@ export default function PackageSection({
   const [title, setTitle] = useState('');
   const [packagePhoto, setPackagePhoto] = useState('');
   const [departureDate, setDepartureDate] = useState('');
-  const [category, setCategory] = useState<'Umroh' | 'Haji Khusus'>('Umroh');
+  const [category, setCategory] = useState<PackageCategoryType>('UMRAH');
   const [price, setPrice] = useState<number>(32000000);
   const [durationDays, setDurationDays] = useState<number>(11);
   const [airline, setAirline] = useState<string>(AIRLINES[0]);
@@ -131,6 +138,42 @@ export default function PackageSection({
   // Live real-time check between Nama Paket + Tanggal Berangkat with Nama Group + Tanggal Berangkat in active seats
   const seatCheck = checkPackageAndSeatAvailability(title, departureDate, activeSeats);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Helper untuk mendapatkan semua tanggal dari data seat online yang memiliki nama paket sama
+  const getMatchingSeats = (pkg: UmrahPackage): SeatSchedule[] => {
+    const normTitle = (pkg.title || '').trim().toLowerCase();
+    const fromActive = activeSeats.filter((s) => {
+      const groupNorm = (s.group || '').trim().toLowerCase();
+      return groupNorm === normTitle || isTitleMatchingSeatGroup(pkg.title, s.group);
+    });
+
+    if (fromActive.length > 0) {
+      const seen = new Set<string>();
+      const result: SeatSchedule[] = [];
+      for (const item of fromActive) {
+        if (!seen.has(item.departureDate)) {
+          seen.add(item.departureDate);
+          result.push({ departureDate: item.departureDate, sisaSeat: item.sisaSeat });
+        }
+      }
+      return result;
+    }
+
+    if (pkg.seatSchedules && pkg.seatSchedules.length > 0) {
+      return pkg.seatSchedules;
+    }
+
+    if (pkg.departureDates && pkg.departureDates.length > 0) {
+      return pkg.departureDates.map((d) => ({
+        departureDate: d,
+        sisaSeat: 0,
+      }));
+    }
+
+    return [];
+  };
+
   // Otomatis urutkan paket berdasarkan Tanggal Berangkat (Ascending: tanggal paling dekat di awal)
   const sortedPackages = [...packages].sort((a, b) => {
     const isoA = normalizeDateToISO(a.departureDate) || a.departureDate || '';
@@ -145,22 +188,43 @@ export default function PackageSection({
 
   const filteredPackages = sortedPackages.filter((p) => {
     if (categoryFilter === 'All') return true;
-    return p.category === categoryFilter;
+    const pCat = (p.category || '').toUpperCase();
+    if (categoryFilter === 'UMRAH') {
+      return pCat === 'UMRAH' || pCat === 'UMROH';
+    }
+    if (categoryFilter === 'HAJI') {
+      return pCat === 'HAJI';
+    }
+    if (categoryFilter === 'HAJI KHUSUS') {
+      return pCat === 'HAJI KHUSUS';
+    }
+    return pCat === categoryFilter;
   });
+
+  const handleManualSync = async () => {
+    if (!onSyncWithSeats) return;
+    setIsSyncing(true);
+    try {
+      await onSyncWithSeats();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingPkg(null);
     setTitle('');
     setPackagePhoto('');
-    // Pre-select first available seat schedule date if available
     if (activeSeats.length > 0) {
       const firstIso = normalizeDateToISO(activeSeats[0].departureDate);
       setDepartureDate(firstIso || '2026-10-05');
+      setTitle(activeSeats[0].group || '');
+      setCategory(getCategoryFromTitle(activeSeats[0].group || ''));
     } else {
       setDepartureDate('2026-10-05');
+      setCategory('UMRAH');
     }
-    setCategory('Umroh');
-    setPrice(32500000);
+    setPrice(0);
     setDurationDays(11);
     setAirline(AIRLINES[0]);
     setDepartureAirport(DEPARTURE_AIRPORTS[0]);
@@ -176,15 +240,21 @@ export default function PackageSection({
   const handleOpenEdit = (p: UmrahPackage) => {
     setEditingPkg(p);
     setTitle(p.title);
-    setPackagePhoto(p.packagePhoto);
+    setPackagePhoto(p.packagePhoto || '');
     const isoDate = normalizeDateToISO(p.departureDate) || p.departureDate;
     setDepartureDate(isoDate);
-    setCategory(p.category);
-    setPrice(p.price);
-    setDurationDays(p.durationDays);
-    setAirline(p.airline);
-    setDepartureAirport(p.departureAirport);
-    setArrivalAirport(p.arrivalAirport);
+    const catNorm =
+      p.category === 'Umroh'
+        ? 'UMRAH'
+        : p.category === 'Haji Khusus'
+        ? 'HAJI KHUSUS'
+        : (p.category as PackageCategoryType) || getCategoryFromTitle(p.title);
+    setCategory(catNorm);
+    setPrice(p.price || 0);
+    setDurationDays(p.durationDays || 11);
+    setAirline(p.airline || AIRLINES[0]);
+    setDepartureAirport(p.departureAirport || DEPARTURE_AIRPORTS[0]);
+    setArrivalAirport(p.arrivalAirport || ARRIVAL_AIRPORTS[0]);
     setMakkahHotelId(p.makkahHotelId || '');
     setMakkahHotel2Id(p.makkahHotel2Id || '');
     setMadinahHotelId(p.madinahHotelId || '');
@@ -222,25 +292,34 @@ export default function PackageSection({
       const madinahHotel = hotels.find((h) => h.id === madinahHotelId);
       const madinahHotel2 = hotels.find((h) => h.id === madinahHotel2Id);
 
+      const resolvedDepartureDate =
+        departureDate ||
+        editingPkg?.departureDate ||
+        editingPkg?.departureDates?.[0] ||
+        '';
+
       const pkgPayload: UmrahPackage = {
+        ...editingPkg,
         id: editingPkg ? editingPkg.id : `pkg-${Date.now()}`,
         title: title.trim(),
         packagePhoto: packagePhoto.trim(),
-        departureDate,
+        departureDate: resolvedDepartureDate,
+        departureDates: editingPkg?.departureDates || (resolvedDepartureDate ? [resolvedDepartureDate] : []),
+        seatSchedules: editingPkg?.seatSchedules || [],
         category,
         price: Number(price) || 0,
         durationDays: Number(durationDays) || 11,
-        airline,
-        departureAirport,
-        arrivalAirport,
+        airline: airline.trim(),
+        departureAirport: departureAirport.trim(),
+        arrivalAirport: arrivalAirport.trim(),
         makkahHotelId,
-        makkahHotelName: makkahHotel?.name || 'Hotel Makkah 1',
+        makkahHotelName: makkahHotel?.name || '',
         distanceToKaaba: viewDistanceKaaba,
         makkahHotel2Id: makkahHotel2Id || '',
         makkahHotel2Name: makkahHotel2?.name || '',
         distanceToKaaba2: viewDistanceKaaba2 || '',
         madinahHotelId,
-        madinahHotelName: madinahHotel?.name || 'Hotel Madinah 1',
+        madinahHotelName: madinahHotel?.name || '',
         distanceToNabawi: viewDistanceNabawi,
         madinahHotel2Id: madinahHotel2Id || '',
         madinahHotel2Name: madinahHotel2?.name || '',
@@ -317,22 +396,6 @@ export default function PackageSection({
     }
   };
 
-  const handleBookingWA = (pkg: UmrahPackage) => {
-    const makkah1 = pkg.makkahHotelName || 'Hotel Rekanan';
-    const makkahText = pkg.makkahHotel2Name
-      ? `${makkah1} & ${pkg.makkahHotel2Name}`
-      : makkah1;
-    const madinah1 = pkg.madinahHotelName || 'Hotel Rekanan';
-    const madinahText = pkg.madinahHotel2Name
-      ? `${madinah1} & ${pkg.madinahHotel2Name}`
-      : madinah1;
-
-    const text = encodeURIComponent(
-      `Assalamu'alaikum ZafaTour CGC Palembang, saya tertarik berkonsultasi mengenai paket:\n\n*${pkg.title}*\nTanggal Berangkat: ${pkg.departureDate}\nMaskapai: ${pkg.airline}\nHotel Makkah (2 Hotel): ${makkahText} (${pkg.distanceToKaaba || 'Dekat'})\nHotel Madinah (2 Hotel): ${madinahText} (${pkg.distanceToNabawi || 'Dekat'})\nHarga: ${formatCurrencyIDR(pkg.price)}\n\nMohon informasi brosur & ketersediaan seat.`
-    );
-    window.open(`https://wa.me/62811715608?text=${text}`, '_blank');
-  };
-
   return (
     <section id="packages" className="py-16 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -344,23 +407,17 @@ export default function PackageSection({
               Group Database Paket
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              Paket Haji & Umroh ZafaTour CGC
+              Paket Haji & Umroh <br /> <span className="text-emerald-600 block sm:inline">Zafatour CGC</span>
             </h2>
             <p className="text-slate-600 text-sm mt-1">
-              Pilihan program ibadah terpercaya dengan rute langsung, hotel
-              berbintang, dan bimbingan manasik komprehensif.
+              Data paket tersinkronisasi otomatis dari Seat Online Zafa Tour.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-800 border border-blue-200/80 rounded-xl text-xs font-semibold">
-              <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-              <span>Urutan: Tanggal Berangkat (Otomatis)</span>
-            </div>
-
             <div className="flex items-center bg-slate-100 p-1 rounded-xl">
               <label htmlFor={pkgCategoryFilterId} className="sr-only">Filter Kategori Paket</label>
-              {(['All', 'Umroh', 'Haji Khusus'] as const).map((cat) => (
+              {(['All', 'UMRAH', 'HAJI', 'HAJI KHUSUS'] as const).map((cat) => (
                 <button
                   key={cat}
                   id={cat === 'All' ? pkgCategoryFilterId : undefined}
@@ -377,14 +434,28 @@ export default function PackageSection({
             </div>
 
             {isAdmin && (
-              <button
-                id="btn-add-package"
-                onClick={handleOpenAdd}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl shadow-md transition-all active:scale-95"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Paket</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {onSyncWithSeats && (
+                  <button
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    title="Sinkronkan Paket dari Seat Online"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                    <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan Seat'}</span>
+                  </button>
+                )}
+
+                <button
+                  id="btn-add-package"
+                  onClick={handleOpenAdd}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-xl shadow-md transition-all active:scale-95"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Paket</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -396,8 +467,18 @@ export default function PackageSection({
               <Plane className="w-12 h-12 mx-auto text-slate-300 mb-3" />
               <h3 className="text-base font-bold text-slate-700">Belum Ada Paket Haji & Umroh di Database</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Daftar paket perjalanan haji dan umroh akan tampil otomatis saat tersedia di database Firestore dbzafatourcgc.
+                Klik tombol <strong>&quot;Sinkronkan Seat&quot;</strong> untuk membaca dan membuat paket secara otomatis dari data Seat Online.
               </p>
+              {isAdmin && onSyncWithSeats && (
+                <button
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-all"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>Sinkronkan Sekarang dari Seat Online</span>
+                </button>
+              )}
             </div>
           ) : (
             filteredPackages.map((pkg) => {
@@ -410,7 +491,7 @@ export default function PackageSection({
                 pkg.distanceToKaaba ||
                 (makkahHotel
                   ? getDistanceToKaaba(makkahHotel.mapUrl, makkahHotel.distanceToCenterMeters)
-                  : 'Dekat Ka\'bah');
+                  : '');
 
               const distanceKaaba2 =
                 pkg.distanceToKaaba2 ||
@@ -422,13 +503,15 @@ export default function PackageSection({
                 pkg.distanceToNabawi ||
                 (madinahHotel
                   ? getDistanceToNabawi(madinahHotel.mapUrl, madinahHotel.distanceToCenterMeters)
-                  : 'Dekat Masjid Nabawi');
+                  : '');
 
               const distanceNabawi2 =
                 pkg.distanceToNabawi2 ||
                 (madinahHotel2
                   ? getDistanceToNabawi(madinahHotel2.mapUrl, madinahHotel2.distanceToCenterMeters)
                   : '');
+
+              const matchingSchedules = getMatchingSeats(pkg);
 
               return (
                 <div
@@ -437,180 +520,254 @@ export default function PackageSection({
                   className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all flex flex-col group"
                 >
                   {/* Image & Badges */}
-                  <div className="relative h-52 w-full bg-slate-800 overflow-hidden">
+                  <div
+                    className={`relative h-52 w-full bg-slate-800 overflow-hidden ${
+                      pkg.packagePhoto ? 'cursor-pointer group/photo' : ''
+                    }`}
+                    onClick={() => {
+                      if (pkg.packagePhoto) {
+                        setPreviewImage({ url: pkg.packagePhoto, title: pkg.title });
+                      }
+                    }}
+                    title={pkg.packagePhoto ? 'Klik untuk melihat foto penuh' : undefined}
+                  >
                     {pkg.packagePhoto ? (
-                      <img
-                        src={pkg.packagePhoto}
-                        alt={pkg.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                        referrerPolicy="no-referrer"
-                      />
+                      <>
+                        <img
+                          src={pkg.packagePhoto}
+                          alt={pkg.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          referrerPolicy="no-referrer"
+                        />
+                        {/* Hover hint for full photo */}
+                        <div className="absolute inset-0 bg-black/25 opacity-0 group-hover/photo:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <div className="px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg">
+                            <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                            <span>Lihat Foto Penuh</span>
+                          </div>
+                        </div>
+                      </>
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-800">
-                        <Plane className="w-10 h-10 mb-2 text-slate-500" />
-                        <span className="text-xs font-semibold text-slate-300">{pkg.title}</span>
+                      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white">
+                        <div className="w-12 h-12 rounded-full bg-blue-500/20 border border-blue-400/30 flex items-center justify-center text-blue-300 mb-2">
+                          <Plane className="w-6 h-6" />
+                        </div>
+                        <h4 className="text-xs font-bold text-white line-clamp-2 px-2">
+                          {pkg.title}
+                        </h4>
+                        <span className="text-[10px] text-blue-200/70 mt-1">
+                          Foto & data hotel dapat diunggah lewat menu edit
+                        </span>
                       </div>
                     )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent pointer-events-none"></div>
 
-                  <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg text-xs font-black tracking-wider uppercase bg-blue-900/90 text-white backdrop-blur-sm shadow-sm">
-                    {pkg.category}
-                  </div>
-
-                  <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm">
-                    {pkg.durationDays} Hari Program
-                  </div>
-
-                  <div className="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-sky-300 flex items-center gap-1.5 min-w-0 truncate">
-                      <Calendar className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Berangkat: {pkg.departureDate}</span>
+                    {/* Category badge */}
+                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg text-xs font-black tracking-wider uppercase bg-blue-900/90 text-white backdrop-blur-sm shadow-sm pointer-events-none">
+                      {pkg.category}
                     </div>
-                    {(() => {
-                      // Pengecekan dilakukan dengan membandingkan Nama Paket + Tanggal Berangkat di Data Paket
-                      // dengan Nama Group / Paket Umroh + Tanggal Berangkat di Data seat.
-                      const matched = activeSeats.find((s) => {
-                        const dateMatches = isDateMatching(pkg.departureDate, s.departureDate);
-                        if (!dateMatches) return false;
-                        return isTitleMatchingSeatGroup(pkg.title, s.group);
-                      });
 
-                      const isAvailable = matched && matched.sisaSeat > 0;
+                    {/* Duration badge if set */}
+                    {pkg.durationDays > 0 && (
+                      <div className="absolute top-3 right-3 px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold shadow-sm pointer-events-none">
+                        {pkg.durationDays} Hari
+                      </div>
+                    )}
 
-                      if (isAvailable) {
-                        return (
-                          <span
-                            id={`seat-badge-available-${pkg.id}`}
-                            className="text-[10px] font-bold bg-emerald-500/95 text-white px-2 py-0.5 rounded-full shadow shrink-0 whitespace-nowrap"
-                          >
-                            Sisa {matched.sisaSeat} Seat
-                          </span>
-                        );
-                      }
-
-                      // Jika seat habis (0) atau tidak ada data seat pada tanggal berangkat yang tertulis dengan nama paket yang sesuai:
-                      // Warna dasar hijau menjadi merah ngeblink dengan tulisan putih.
-                      return (
-                        <span
-                          id={`seat-badge-soldout-${pkg.id}`}
-                          className="text-[10px] font-extrabold text-white bg-red-600 animate-blink-red px-2 py-0.5 rounded-full shadow-md shrink-0 whitespace-nowrap flex items-center gap-1"
-                          title="Seat telah habis atau tidak ada pada tanggal berangkat dengan nama paket yang sesuai"
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                          <span>Seat Habis</span>
+                    {/* Bottom banner info */}
+                    <div className="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-amber-300 flex items-center gap-1.5 min-w-0 truncate">
+                        <Calendar className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                        <span className="truncate">
+                          {matchingSchedules.length > 0
+                            ? `${matchingSchedules.length} Pilihan Tanggal`
+                            : 'Paket Habis'}
                         </span>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-                {/* Body Content */}
-                <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-snug">
-                      {pkg.title}
-                    </h3>
-
-                    {/* Flight & Airports Info */}
-                    <div className="mt-3 p-3 bg-slate-50 rounded-xl space-y-2 text-xs border border-slate-100">
-                      <div className="flex items-center gap-2 font-semibold text-slate-800">
-                        <Plane className="w-4 h-4 text-blue-600 shrink-0" />
-                        <span>{pkg.airline}</span>
-                      </div>
-                      <div className="text-[11px] text-slate-600 pl-6 space-y-0.5">
-                        <div>
-                          <span className="text-slate-400">Rute:</span>{' '}
-                          {pkg.departureAirport.split('(')[1]?.replace(')', '') || 'PLM'}{' '}
-                          &rarr;{' '}
-                          {pkg.arrivalAirport.includes('Jedah') ? 'Jeddah (JED)' : 'Madinah (MED)'}
-                        </div>
-                        <div className="text-slate-500 truncate">
-                          Kedatangan: {pkg.arrivalAirport}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Hotels & Distance Views */}
-                    <div className="mt-3 space-y-2 text-xs">
-                      {/* Hotel Makkah (1 & 2) */}
-                      <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl space-y-1.5">
-                        <div>
-                          <div className="flex items-center gap-1.5 font-bold text-blue-950">
-                            <Building2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                            <span>Makkah 1: {pkg.makkahHotelName || makkahHotel?.name || 'Hotel Rekanan'}</span>
-                          </div>
-                          <div className="text-[11px] text-blue-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 shrink-0" />
-                            <span>Jarak ke Ka&apos;bah: {distanceKaaba}</span>
-                          </div>
-                        </div>
-
-                        {(pkg.makkahHotel2Name || makkahHotel2) && (
-                          <div className="pt-1.5 border-t border-blue-200/60">
-                            <div className="flex items-center gap-1.5 font-bold text-blue-900">
-                              <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                              <span>Makkah 2: {pkg.makkahHotel2Name || makkahHotel2?.name}</span>
-                            </div>
-                            <div className="text-[11px] text-blue-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
-                              <MapPin className="w-3 h-3 shrink-0" />
-                              <span>Jarak ke Ka&apos;bah: {distanceKaaba2 || 'Dekat Ka\'bah'}</span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Hotel Madinah (1 & 2) */}
-                      <div className="p-2.5 bg-emerald-50/70 border border-emerald-100 rounded-xl space-y-1.5">
-                        <div>
-                          <div className="flex items-center gap-1.5 font-bold text-emerald-950">
-                            <Building2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
-                            <span>Madinah 1: {pkg.madinahHotelName || madinahHotel?.name || 'Hotel Rekanan'}</span>
-                          </div>
-                          <div className="text-[11px] text-emerald-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 shrink-0" />
-                            <span>Jarak ke Masjid Madinah: {distanceNabawi}</span>
-                          </div>
-                        </div>
-
-                        {(pkg.madinahHotel2Name || madinahHotel2) && (
-                          <div className="pt-1.5 border-t border-emerald-200/60">
-                            <div className="flex items-center gap-1.5 font-bold text-emerald-900">
-                              <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span>Madinah 2: {pkg.madinahHotel2Name || madinahHotel2?.name}</span>
-                            </div>
-                            <div className="text-[11px] text-emerald-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
-                              <MapPin className="w-3 h-3 shrink-0" />
-                              <span>Jarak ke Masjid Madinah: {distanceNabawi2 || 'Dekat Masjid Madinah'}</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Price & CTA */}
-                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                  {/* Body Content */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                     <div>
-                      <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                        Harga Mulai
+                      <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-700 transition-colors leading-snug">
+                        {pkg.title}
+                      </h3>
+
+                      {/* Dynamic Departure Dates from Seat Online (Tanggal-tanggal dari data seat) */}
+                      {matchingSchedules.length === 0 ? (
+                        <div className="mt-3 p-3 bg-red-50/90 border border-red-200 rounded-xl space-y-2 animate-in fade-in">
+                          <div className="flex items-center justify-between text-xs font-bold text-red-950">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-red-700 shrink-0" />
+                              <span>Jadwal Keberangkatan (Seat Online):</span>
+                            </div>
+                            <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-red-600 text-white shadow-xs">
+                              Paket Habis
+                            </span>
+                          </div>
+                          <div className="py-2.5 px-3 bg-white rounded-lg border border-red-200 text-center shadow-xs">
+                            <div className="flex items-center justify-center gap-1.5 text-red-700 font-bold text-xs">
+                              <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                              <span>Paket Habis</span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              Tanggal keberangkatan pada seat online sudah tidak ada / selesai.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-amber-950">
+                            <div className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                              <span>Jadwal Keberangkatan (Seat Online):</span>
+                            </div>
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-200/90 text-amber-900">
+                              {matchingSchedules.length} Jadwal
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 max-h-44 overflow-y-auto pr-0.5">
+                            {matchingSchedules.map((sch, sIdx) => (
+                              <div
+                                key={sIdx}
+                                className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-amber-200/60 shadow-xs text-xs hover:border-amber-400 transition-colors"
+                              >
+                                <div className="flex items-center gap-2 text-slate-800 font-semibold text-[11px]">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 shrink-0"></span>
+                                  <span>{sch.departureDate}</span>
+                                </div>
+                                <span
+                                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full shrink-0 whitespace-nowrap ${
+                                    sch.sisaSeat > 0
+                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                      : 'bg-red-100 text-red-700 border border-red-200'
+                                  }`}
+                                >
+                                  {sch.sisaSeat > 0 ? `Sisa ${sch.sisaSeat} Seat` : 'Seat Habis'}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Flight & Airports Info */}
+                      <div className="mt-3 p-3 bg-slate-50 rounded-xl space-y-1.5 text-xs border border-slate-100">
+                        {pkg.airline ? (
+                          <>
+                            <div className="flex items-center gap-2 font-semibold text-slate-800">
+                              <Plane className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>{pkg.airline}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 pl-6 space-y-0.5">
+                              <div>
+                                <span className="text-slate-400">Rute:</span>{' '}
+                                {pkg.departureAirport.split('(')[1]?.replace(')', '') || 'PLM'}{' '}
+                                &rarr;{' '}
+                                {pkg.arrivalAirport.includes('Jedah') ? 'Jeddah (JED)' : 'Madinah (MED)'}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 text-slate-400 italic text-[11px]">
+                            <Plane className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>Maskapai & Rute belum diatur (Update via menu edit)</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-lg font-black text-blue-900">
-                        {formatCurrencyIDR(pkg.price)}
+
+                      {/* Hotels & Distance Views */}
+                      <div className="mt-3 space-y-2 text-xs">
+                        {/* Hotel Makkah */}
+                        {(pkg.makkahHotelName || makkahHotel) ? (
+                          <div className="p-2.5 bg-blue-50/70 border border-blue-100 rounded-xl space-y-1.5">
+                            <div>
+                              <div className="flex items-center gap-1.5 font-bold text-blue-950">
+                                <Building2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                                <span>Makkah 1: {pkg.makkahHotelName || makkahHotel?.name}</span>
+                              </div>
+                              {distanceKaaba && (
+                                <div className="text-[11px] text-blue-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 shrink-0" />
+                                  <span>Jarak ke Ka&apos;bah: {distanceKaaba}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {(pkg.makkahHotel2Name || makkahHotel2) && (
+                              <div className="pt-1.5 border-t border-blue-200/60">
+                                <div className="flex items-center gap-1.5 font-bold text-blue-900">
+                                  <Building2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                  <span>Makkah 2: {pkg.makkahHotel2Name || makkahHotel2?.name}</span>
+                                </div>
+                                {distanceKaaba2 && (
+                                  <div className="text-[11px] text-blue-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 shrink-0" />
+                                    <span>Jarak ke Ka&apos;bah: {distanceKaaba2}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {/* Hotel Madinah */}
+                        {(pkg.madinahHotelName || madinahHotel) ? (
+                          <div className="p-2.5 bg-emerald-50/70 border border-emerald-100 rounded-xl space-y-1.5">
+                            <div>
+                              <div className="flex items-center gap-1.5 font-bold text-emerald-950">
+                                <Building2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                                <span>Madinah 1: {pkg.madinahHotelName || madinahHotel?.name}</span>
+                              </div>
+                              {distanceNabawi && (
+                                <div className="text-[11px] text-emerald-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 shrink-0" />
+                                  <span>Jarak ke Masjid Madinah: {distanceNabawi}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {(pkg.madinahHotel2Name || madinahHotel2) && (
+                              <div className="pt-1.5 border-t border-emerald-200/60">
+                                <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                                  <Building2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                  <span>Madinah 2: {pkg.madinahHotel2Name || madinahHotel2?.name}</span>
+                                </div>
+                                {distanceNabawi2 && (
+                                  <div className="text-[11px] text-emerald-700 font-semibold pl-5 mt-0.5 flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 shrink-0" />
+                                    <span>Jarak ke Masjid Madinah: {distanceNabawi2}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+
+                        {!pkg.makkahHotelName && !makkahHotel && !pkg.madinahHotelName && !madinahHotel && (
+                          <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-xl text-slate-400 italic text-[11px] flex items-center gap-1.5">
+                            <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span>Hotel Makkah & Madinah belum diatur (Update via menu edit)</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        id={`btn-wa-pkg-${pkg.id}`}
-                        onClick={() => handleBookingWA(pkg)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition-all active:scale-95"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>Daftar</span>
-                      </button>
+                    {/* Price & Admin Controls */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div>
+                        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          Harga Mulai
+                        </div>
+                        <div className="text-lg font-black text-blue-900">
+                          {pkg.price > 0 ? formatCurrencyIDR(pkg.price) : 'Hubungi Kami'}
+                        </div>
+                      </div>
 
                       {isAdmin && (
-                        <div className="flex items-center gap-1 pl-1">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleOpenEdit(pkg)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -630,12 +787,11 @@ export default function PackageSection({
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })
-        )}
+              );
+            })
+          )}
+        </div>
       </div>
-    </div>
 
       {/* In-App Confirm Delete Modal */}
       <ConfirmDeleteModal
@@ -646,6 +802,46 @@ export default function PackageSection({
         itemName={deletePkgTarget?.title || ''}
         itemType="paket"
       />
+
+      {/* Full Photo Preview Lightbox Modal */}
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[92vh] w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-950/80 border-b border-white/10 text-white">
+              <div className="min-w-0 pr-4">
+                <h3 className="text-sm sm:text-base font-bold truncate text-slate-100">
+                  {previewImage.title}
+                </h3>
+                <p className="text-[11px] text-slate-400">Foto Utama Brosur Paket (Klik di luar atau tombol silang untuk menutup)</p>
+              </div>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-colors shrink-0"
+                aria-label="Tutup preview foto"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Image Area */}
+            <div className="flex-1 overflow-auto flex items-center justify-center p-2 sm:p-4 bg-black/50">
+              <img
+                src={previewImage.url}
+                alt={previewImage.title}
+                className="max-h-[78vh] w-auto max-w-full object-contain rounded-lg shadow-2xl"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Admin CRUD Modal: Add / Edit Package */}
       {isModalOpen && (
@@ -674,96 +870,51 @@ export default function PackageSection({
                   required
                   placeholder="Contoh: UMRAH REGULER MAHABBAH 11H (Direct GA PLM)"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setCategory(getCategoryFromTitle(e.target.value));
+                  }}
                   className="w-full px-3.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Nama paket dari Seat Online. Kategori otomatis ditentukan dari 5 huruf pertama: <strong className="text-blue-700 font-bold">{category}</strong>.
+                </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label htmlFor={pkgCategoryInputId} className="block text-xs font-bold text-slate-700 mb-1">
-                    Kategori *
-                  </label>
-                  <select
-                    id={pkgCategoryInputId}
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value as any)}
-                    className="w-full px-3.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  >
-                    <option value="Umroh">Umroh</option>
-                    <option value="Haji Khusus">Haji Khusus</option>
-                  </select>
+              {/* Tampilkan info tanggal yang tersinkron jika ada */}
+              {editingPkg && editingPkg.departureDates && editingPkg.departureDates.length > 0 && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-xs space-y-1">
+                  <div className="font-bold text-amber-900 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Daftar Tanggal Keberangkatan Tersinkron dari Seat Online ({editingPkg.departureDates.length} tanggal):</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {editingPkg.departureDates.map((d, dIdx) => (
+                      <span key={dIdx} className="px-2 py-0.5 bg-white border border-amber-300 text-amber-950 font-semibold rounded-md text-[11px]">
+                        {d}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+              )}
 
-                <div className="sm:col-span-2">
-                  <label htmlFor={pkgDepartureDateInputId} className="block text-xs font-bold text-slate-700 mb-1">
-                    Tanggal Berangkat *
-                  </label>
-
-                  {/* Seat Quick Sync Selector */}
-                  {activeSeats.length > 0 && (
-                    <div className="mb-2">
-                      <select
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val) {
-                            const [dateVal, groupVal] = val.split('|||');
-                            setDepartureDate(dateVal);
-                            // Auto-suggest / populate title if title is empty or generic
-                            if (!title.trim() && groupVal) {
-                              setTitle(groupVal);
-                            }
-                          }
-                        }}
-                        className="w-full text-xs px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
-                      >
-                        <option value="">-- Sinkronkan dari Jadwal Seat Tersedia ({activeSeats.length} jadwal) --</option>
-                        {activeSeats.map((s, idx) => {
-                          const isoDate = normalizeDateToISO(s.departureDate);
-                          return (
-                            <option key={`${s.no}-${idx}`} value={`${isoDate || s.departureDate}|||${s.group}`}>
-                              {s.departureDate} — Sisa {s.sisaSeat} Kursi ({s.group})
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  )}
-
-                  <input
-                    id={pkgDepartureDateInputId}
-                    type="date"
-                    required
-                    value={departureDate}
-                    onChange={(e) => setDepartureDate(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-
-                  {/* Real-time synchronization message:
-                      "Sinkronkan Tanggal Berangkat saat penambahan paket dengan Tanggal Keberangkatan dari Seat yang tersedia, jika tidak ada maka akan muncul pesan Tanggal tidak ada. jika ada maka akan muncul pesan sisa kursi. Pengecekan dilakukan dengan membandingkan Nama Paket + Tanggal Berangkat di Data Paket dengan Nama Group / Paket Umroh + Tanggal Berangkat di Data seat." */}
-                  {departureDate && (
-                    <div className="mt-2">
-                      {seatCheck.isMatched ? (
-                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold animate-in fade-in">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>
-                            Sisa kursi: <strong className="text-emerald-950 font-bold">{seatCheck.matchedSeat?.sisaSeat} kursi</strong> ({seatCheck.matchedSeat?.group})
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-xs text-rose-800 font-medium animate-in fade-in">
-                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-bold text-rose-950 block">Tanggal tidak ada</span>
-                            <span className="text-[11px] text-rose-700 leading-tight">
-                              {seatCheck.message}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
+              <div>
+                <label htmlFor={pkgCategoryInputId} className="block text-xs font-bold text-slate-700 mb-1">
+                  Kategori *
+                </label>
+                <select
+                  id={pkgCategoryInputId}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as PackageCategoryType)}
+                  className="w-full px-3.5 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold text-slate-800"
+                >
+                  <option value="UMRAH">UMRAH</option>
+                  <option value="HAJI">HAJI</option>
+                  <option value="HAJI KHUSUS">HAJI KHUSUS</option>
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Pilihan kategori: <strong className="text-blue-700 font-bold">UMRAH</strong>, <strong className="text-blue-700 font-bold">HAJI</strong>, atau <strong className="text-blue-700 font-bold">HAJI KHUSUS</strong>. Tanggal keberangkatan tersinkron otomatis dari data Seat Online.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
