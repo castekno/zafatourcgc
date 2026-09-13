@@ -201,6 +201,15 @@ export async function deleteHotelRecord(id: string): Promise<void> {
   }
 }
 
+export function isHajiKhususKemenag(text?: string): boolean {
+  if (!text) return false;
+  const clean = text.toLowerCase();
+  return (
+    clean.includes('haji khusus kemenag') ||
+    (clean.includes('haji') && clean.includes('kemenag'))
+  );
+}
+
 // ==================== PACKAGES (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchPackages(): Promise<UmrahPackage[]> {
@@ -212,7 +221,13 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
       if (!snap.empty) {
         const items: UmrahPackage[] = [];
         snap.forEach((d) => {
-          items.push({ id: d.id, ...(d.data() as any) });
+          const pkgData = { id: d.id, ...(d.data() as any) };
+          if (isHajiKhususKemenag(pkgData.title)) {
+            // Hapus otomatis dari Firestore jika sebelumnya sempat masuk
+            deleteDoc(doc(db, 'packages', d.id)).catch(() => {});
+          } else {
+            items.push(pkgData);
+          }
         });
         saveLocal(STORAGE_KEYS.PACKAGES, items);
         return items;
@@ -222,7 +237,12 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
     }
   }
 
-  return loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
+  const local = loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
+  const filtered = local.filter((p) => !isHajiKhususKemenag(p.title));
+  if (filtered.length !== local.length) {
+    saveLocal(STORAGE_KEYS.PACKAGES, filtered);
+  }
+  return filtered;
 }
 
 export async function savePackageRecord(pkg: UmrahPackage): Promise<void> {
@@ -329,12 +349,12 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
     return fetchPackages();
   }
 
-  // 1. Kelompokkan data seat berdasarkan nama paket (group)
+  // 1. Kelompokkan data seat berdasarkan nama paket (group) - Abaikan Haji Khusus Kemenag
   const groupedSeats = new Map<string, { displayTitle: string; schedules: SeatSchedule[] }>();
 
   for (const seat of seats) {
     const trimmedTitle = (seat.group || '').trim();
-    if (!trimmedTitle) continue;
+    if (!trimmedTitle || isHajiKhususKemenag(trimmedTitle)) continue;
     const key = trimmedTitle.toLowerCase();
 
     if (!groupedSeats.has(key)) {
@@ -355,6 +375,12 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
   const existingMap = new Map<string, UmrahPackage>();
 
   for (const pkg of existingPackages) {
+    if (isHajiKhususKemenag(pkg.title)) {
+      if (db) {
+        deleteDoc(doc(db, 'packages', pkg.id)).catch(() => {});
+      }
+      continue;
+    }
     const key = (pkg.title || '').trim().toLowerCase();
     if (key && !existingMap.has(key)) {
       existingMap.set(key, pkg);
@@ -447,6 +473,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
   // 4. Sertakan juga paket di database yang tanggalnya sudah tidak ada di data seat online
   // Kosongkan tanggal keberangkatan agar memunculkan info "Paket Habis"
   for (const [key, pkg] of existingMap.entries()) {
+    if (isHajiKhususKemenag(pkg.title)) continue;
     if (!groupedSeats.has(key)) {
       const currentCat = pkg.category;
       const normalizedCategory =
@@ -475,10 +502,11 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
     }
   }
 
-  // 5. Simpan ke local storage
-  saveLocal(STORAGE_KEYS.PACKAGES, resultPackages);
+  // 5. Simpan ke local storage (pastikan tidak ada Haji Khusus Kemenag)
+  const finalPackages = resultPackages.filter((p) => !isHajiKhususKemenag(p.title));
+  saveLocal(STORAGE_KEYS.PACKAGES, finalPackages);
 
-  return resultPackages;
+  return finalPackages;
 }
 
 // ==================== DOCUMENTATION (100% FIRESTORE CLIENT SDK) ====================

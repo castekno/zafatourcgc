@@ -213,6 +213,9 @@ async function startServer() {
       const html = await response.text();
       
       // Parse table rows inside <tbody>...</tbody>
+      const updateMatch = html.match(/<h2>Update\s+([^<]+)<\/h2>/i);
+      const officialUpdate = updateMatch ? updateMatch[1].trim() : '';
+
       const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
       const rows: Array<{
         no: number;
@@ -243,8 +246,12 @@ async function startServer() {
             const departureDate = cols[2];
             const sisaSeat = parseInt(cols[3], 10) || 0;
 
-            // Only include where seat count > 0 as explicitly requested
-            if (sisaSeat > 0) {
+            // Only include where seat count > 0 and exclude haji khusus kemenag
+            const isHajiKemenag =
+              group.toLowerCase().includes('haji khusus kemenag') ||
+              (group.toLowerCase().includes('haji') && group.toLowerCase().includes('kemenag'));
+
+            if (sisaSeat > 0 && !isHajiKemenag) {
               rows.push({
                 no,
                 group,
@@ -256,9 +263,13 @@ async function startServer() {
         }
       }
 
+      // Sort by Group di https://seat.zafatour.com/ agar mudah mengeceknya
+      rows.sort((a, b) => a.group.localeCompare(b.group, 'id') || a.no - b.no);
+
       res.json({
         success: true,
         source: 'https://seat.zafatour.com/',
+        officialUpdate,
         count: rows.length,
         data: rows,
         fetchedAt: new Date().toISOString(),
@@ -266,21 +277,12 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error fetching seat data:', err?.message || err);
       
-      // Provide fallback real data from latest scrape so UI never renders empty if target has intermittent delay
+      // Fallback verified current data from seat.zafatour.com sorted by Group (without haji khusus kemenag)
       const fallbackData = [
-        { no: 1, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 14 September 2026', sisaSeat: 6 },
-        { no: 5, group: 'UMRAH SUPER HEMAT 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 35 },
-        { no: 6, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 57 },
-        { no: 7, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 13 },
-        { no: 9, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 12 Oktober 2026', sisaSeat: 27 },
-        { no: 14, group: 'UMRAH REGULER MAHABBAH 12H JT CGK 1448H', departureDate: 'Senin, 19 Oktober 2026', sisaSeat: 11 },
-        { no: 15, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 11 },
-        { no: 16, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 28 },
-        { no: 23, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 26 },
-        { no: 24, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 22 },
-        { no: 25, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 16 November 2026', sisaSeat: 5 },
-        { no: 26, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 16 November 2026', sisaSeat: 21 },
-        { no: 30, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
+        { no: 19, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 4 },
+        { no: 23, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
+        { no: 14, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 2 },
+        { no: 18, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 5 },
       ];
 
       res.json({

@@ -32,7 +32,7 @@ import {
   isDateMatching,
   normalizeDateToISO,
 } from '../utils/seatSync';
-import { getCategoryFromTitle } from '../firebase/service';
+import { getCategoryFromTitle, isHajiKhususKemenag } from '../firebase/service';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface PackageSectionProps {
@@ -79,15 +79,17 @@ export default function PackageSection({
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   // Local active seats state (synced with props or fetched as fallback)
-  const [activeSeats, setActiveSeats] = useState<SeatInfo[]>(seats);
+  const [activeSeats, setActiveSeats] = useState<SeatInfo[]>(
+    seats.filter((s) => !isHajiKhususKemenag(s.group))
+  );
 
   useEffect(() => {
     if (seats && seats.length > 0) {
-      setActiveSeats(seats);
+      setActiveSeats(seats.filter((s) => !isHajiKhususKemenag(s.group)));
     } else {
       fetchLiveSeatData()
         .then((data) => {
-          setActiveSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0));
+          setActiveSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group)));
         })
         .catch((err) => console.warn('Could not load seats for sync:', err));
     }
@@ -175,7 +177,10 @@ export default function PackageSection({
   };
 
   // Otomatis urutkan paket berdasarkan Tanggal Berangkat (Ascending: tanggal paling dekat di awal)
-  const sortedPackages = [...packages].sort((a, b) => {
+  // Pastikan Haji Khusus Kemenag tidak pernah dimasukkan ke paket
+  const sortedPackages = [...packages]
+    .filter((p) => !isHajiKhususKemenag(p.title))
+    .sort((a, b) => {
     const isoA = normalizeDateToISO(a.departureDate) || a.departureDate || '';
     const isoB = normalizeDateToISO(b.departureDate) || b.departureDate || '';
     const timeA = new Date(isoA).getTime();
