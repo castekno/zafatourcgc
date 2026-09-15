@@ -14,7 +14,7 @@ import {
   AppSettings,
   SeatInfo,
 } from './types';
-import { fetchLiveSeatData } from './services/seatService';
+import { fetchLiveSeatData, isHajiKhususKemenag } from './services/seatService';
 import {
   getHotels,
   saveHotel,
@@ -57,9 +57,9 @@ export default function App() {
       let allSeats: SeatInfo[] = [];
       try {
         const rawSeats = await fetchLiveSeatData(true);
-        allSeats = rawSeats;
-        const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0);
+        const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
         setSeats(availableSeats);
+        allSeats = availableSeats;
       } catch (seatErr) {
         console.warn('Seat fetch fallback in loadAllData:', seatErr);
       }
@@ -96,9 +96,9 @@ export default function App() {
   const handleSyncPackages = async () => {
     try {
       const rawSeats = await fetchLiveSeatData(true);
-      const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0);
+      const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
       setSeats(availableSeats);
-      const synced = await syncPackagesWithSeats(rawSeats);
+      const synced = await syncPackagesWithSeats(availableSeats);
       setPackages(synced);
     } catch (err) {
       console.error('Error manually syncing packages with seats:', err);

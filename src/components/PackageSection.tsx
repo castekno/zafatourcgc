@@ -142,30 +142,39 @@ export default function PackageSection({
 
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Helper untuk mendapatkan semua tanggal dari data seat online yang memiliki nama paket sama
+  // Helper untuk mendapatkan semua tanggal dari data seat online yang memiliki nama paket sama persis (Group)
   const getMatchingSeats = (pkg: UmrahPackage): SeatSchedule[] => {
     const normTitle = (pkg.title || '').trim().toLowerCase();
-    const fromActive = activeSeats.filter((s) => {
+
+    // 1. Ambil dari activeSeats yang nama group-nya SAMA PERSIS dengan judul paket
+    const exactActive = activeSeats.filter((s) => {
       const groupNorm = (s.group || '').trim().toLowerCase();
-      return groupNorm === normTitle || isTitleMatchingSeatGroup(pkg.title, s.group);
+      return groupNorm === normTitle && !isHajiKhususKemenag(s.group);
     });
 
-    if (fromActive.length > 0) {
+    if (exactActive.length > 0) {
       const seen = new Set<string>();
       const result: SeatSchedule[] = [];
-      for (const item of fromActive) {
+      for (const item of exactActive) {
         if (!seen.has(item.departureDate)) {
           seen.add(item.departureDate);
           result.push({ departureDate: item.departureDate, sisaSeat: item.sisaSeat });
         }
       }
+      result.sort((a, b) => {
+        const da = normalizeDateToISO(a.departureDate) || a.departureDate;
+        const db = normalizeDateToISO(b.departureDate) || b.departureDate;
+        return da.localeCompare(db);
+      });
       return result;
     }
 
+    // 2. Jika tidak ada exact match di activeSeats, gunakan seatSchedules yang tersimpan langsung di dokumen paket
     if (pkg.seatSchedules && pkg.seatSchedules.length > 0) {
       return pkg.seatSchedules;
     }
 
+    // 3. Fallback departureDates jika ada
     if (pkg.departureDates && pkg.departureDates.length > 0) {
       return pkg.departureDates.map((d) => ({
         departureDate: d,
@@ -176,20 +185,29 @@ export default function PackageSection({
     return [];
   };
 
-  // Otomatis urutkan paket berdasarkan Tanggal Berangkat (Ascending: tanggal paling dekat di awal)
+  // Sorting: Default 'group' sesuai Group di https://seat.zafatour.com/ agar mudah mengeceknya
+  const [packageSortBy, setPackageSortBy] = useState<'group' | 'date'>('group');
+
   // Pastikan Haji Khusus Kemenag tidak pernah dimasukkan ke paket
   const sortedPackages = [...packages]
     .filter((p) => !isHajiKhususKemenag(p.title))
     .sort((a, b) => {
-    const isoA = normalizeDateToISO(a.departureDate) || a.departureDate || '';
-    const isoB = normalizeDateToISO(b.departureDate) || b.departureDate || '';
-    const timeA = new Date(isoA).getTime();
-    const timeB = new Date(isoB).getTime();
-    if (!isNaN(timeA) && !isNaN(timeB)) {
-      return timeA - timeB;
-    }
-    return isoA.localeCompare(isoB);
-  });
+      if (packageSortBy === 'group') {
+        const groupComp = (a.title || '').localeCompare(b.title || '', 'id');
+        if (groupComp !== 0) return groupComp;
+      }
+      const isoA = normalizeDateToISO(a.departureDate) || a.departureDate || '';
+      const isoB = normalizeDateToISO(b.departureDate) || b.departureDate || '';
+      if (!isoA && !isoB) return (a.title || '').localeCompare(b.title || '', 'id');
+      if (!isoA) return 1;
+      if (!isoB) return -1;
+      const timeA = new Date(isoA).getTime();
+      const timeB = new Date(isoB).getTime();
+      if (!isNaN(timeA) && !isNaN(timeB)) {
+        return timeA - timeB;
+      }
+      return isoA.localeCompare(isoB);
+    });
 
   const filteredPackages = sortedPackages.filter((p) => {
     if (categoryFilter === 'All') return true;
@@ -436,6 +454,34 @@ export default function PackageSection({
                   {cat === 'All' ? 'Semua Paket' : cat}
                 </button>
               ))}
+            </div>
+
+            {/* Sort Toggle (Default: Group A-Z matching seat.zafatour.com) */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setPackageSortBy('group')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  packageSortBy === 'group'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-slate-600 hover:text-blue-900'
+                }`}
+                title="Urutkan berdasarkan Group Nama Paket (A-Z) sesuai https://seat.zafatour.com/"
+              >
+                Sort: Group
+              </button>
+              <button
+                type="button"
+                onClick={() => setPackageSortBy('date')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  packageSortBy === 'date'
+                    ? 'bg-white text-blue-900 shadow-sm'
+                    : 'text-slate-600 hover:text-blue-900'
+                }`}
+                title="Urutkan berdasarkan Tanggal Keberangkatan"
+              >
+                Sort: Tanggal
+              </button>
             </div>
 
             {isAdmin && (

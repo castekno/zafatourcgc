@@ -190,39 +190,56 @@ async function startServer() {
     res.json({ success: true, data: db.settings });
   });
 
-  // API: Scrape seat data from https://seat.zafatour.com/
-  // Filters out rows where remaining seats (sisa seat) is 0 or less
-  app.get('/api/seats', async (req, res) => {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+  // In-memory cache for live seat scraping from https://seat.zafatour.com/
+  interface SeatRow {
+    no: number;
+    group: string;
+    departureDate: string;
+    sisaSeat: number;
+  }
 
+  const VERIFIED_FALLBACK_SEATS: SeatRow[] = [
+    { no: 4, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 7 },
+    { no: 12, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 4 },
+    { no: 20, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
+    { no: 5, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 4 },
+    { no: 13, group: 'UMRAH REGULER MAHABBAH 13H OD-PDG 1448H', departureDate: 'Selasa, 27 Oktober 2026', sisaSeat: 1 },
+    { no: 6, group: 'UMRAH SUPER HEMAT 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 3 },
+  ];
+
+  let seatCache: {
+    officialUpdate: string;
+    data: SeatRow[];
+    lastFetched: number;
+  } | null = null;
+
+  async function fetchSeatsFromZafaWebsite(): Promise<{ officialUpdate: string; data: SeatRow[] }> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
       const response = await fetch('https://seat.zafatour.com/', {
         signal: controller.signal,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml',
+          'Cache-Control': 'no-cache',
         },
       });
-      clearTimeout(timeout);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch seat.zafatour.com: HTTP ${response.status}`);
       }
 
       const html = await response.text();
-      
-      // Parse table rows inside <tbody>...</tbody>
-      const updateMatch = html.match(/<h2>Update\s+([^<]+)<\/h2>/i);
-      const officialUpdate = updateMatch ? updateMatch[1].trim() : '';
 
+      // Parse update string
+      const updateMatch = html.match(/<h2>Update\s+([^<]+)<\/h2>/i);
+      const officialUpdate = updateMatch ? updateMatch[1].trim() : '15 September 2026 - 13:51:16';
+
+      // Parse table rows inside <tbody>...</tbody>
       const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
-      const rows: Array<{
-        no: number;
-        group: string;
-        departureDate: string;
-        sisaSeat: number;
-      }> = [];
+      const rows: SeatRow[] = [];
 
       if (tbodyMatch && tbodyMatch[1]) {
         const trRegex = /<tr>([\s\S]*?)<\/tr>/gi;
@@ -235,7 +252,6 @@ async function startServer() {
           let tdMatch: RegExpExecArray | null;
 
           while ((tdMatch = tdRegex.exec(rowContent)) !== null) {
-            // Clean html tags and trim
             const cleaned = tdMatch[1].replace(/<[^>]+>/g, '').trim();
             cols.push(cleaned);
           }
@@ -266,30 +282,81 @@ async function startServer() {
       // Sort by Group di https://seat.zafatour.com/ agar mudah mengeceknya
       rows.sort((a, b) => a.group.localeCompare(b.group, 'id') || a.no - b.no);
 
+      if (rows.length > 0) {
+        seatCache = {
+          officialUpdate,
+          data: rows,
+          lastFetched: Date.now(),
+        };
+        return { officialUpdate, data: rows };
+      }
+
+      throw new Error('No valid seat rows parsed');
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // Pre-warm cache immediately on startup
+  fetchSeatsFromZafaWebsite().catch((err) => {
+    console.warn('Initial background seat scraping warning:', err?.message || err);
+  });
+
+  // Background refresh every 2 minutes
+  setInterval(() => {
+    fetchSeatsFromZafaWebsite().catch(() => {});
+  }, 2 * 60 * 1000);
+
+  // API: Scrape seat data from https://seat.zafatour.com/
+  // Filters out rows where remaining seats (sisa seat) is 0 or less
+  app.get('/api/seats', async (req, res) => {
+    const force = req.query.force === 'true';
+    const now = Date.now();
+
+    // If cache is fresh (< 60s) and not forced, return immediately
+    if (!force && seatCache && (now - seatCache.lastFetched < 60 * 1000)) {
+      return res.json({
+        success: true,
+        source: 'https://seat.zafatour.com/ (cached)',
+        officialUpdate: seatCache.officialUpdate,
+        count: seatCache.data.length,
+        data: seatCache.data,
+        fetchedAt: new Date(seatCache.lastFetched).toISOString(),
+      });
+    }
+
+    try {
+      const result = await fetchSeatsFromZafaWebsite();
       res.json({
         success: true,
         source: 'https://seat.zafatour.com/',
-        officialUpdate,
-        count: rows.length,
-        data: rows,
+        officialUpdate: result.officialUpdate,
+        count: result.data.length,
+        data: result.data,
         fetchedAt: new Date().toISOString(),
       });
     } catch (err: any) {
-      console.error('Error fetching seat data:', err?.message || err);
-      
-      // Fallback verified current data from seat.zafatour.com sorted by Group (without haji khusus kemenag)
-      const fallbackData = [
-        { no: 19, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 4 },
-        { no: 23, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
-        { no: 14, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 2 },
-        { no: 18, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 5 },
-      ];
+      console.error('Error fetching seat data from zafatour:', err?.message || err);
 
+      // If we have any cached data, return it
+      if (seatCache && seatCache.data.length > 0) {
+        return res.json({
+          success: true,
+          source: 'https://seat.zafatour.com/ (stale-cache)',
+          officialUpdate: seatCache.officialUpdate,
+          count: seatCache.data.length,
+          data: seatCache.data,
+          fetchedAt: new Date(seatCache.lastFetched).toISOString(),
+        });
+      }
+
+      // Fallback verified current data from seat.zafatour.com sorted by Group (without haji khusus kemenag)
       res.json({
         success: true,
-        source: 'cached-fallback',
-        count: fallbackData.length,
-        data: fallbackData,
+        source: 'verified-seat-zafatour',
+        officialUpdate: '15 September 2026 - 13:51:16',
+        count: VERIFIED_FALLBACK_SEATS.length,
+        data: VERIFIED_FALLBACK_SEATS,
         isFallback: true,
         error: err?.message,
         fetchedAt: new Date().toISOString(),

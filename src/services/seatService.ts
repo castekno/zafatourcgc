@@ -8,35 +8,49 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
  * Tabel Ketersediaan Seat Paket Umrah PT. Zafa Mulia Mandiri
  * (Haji Khusus Kemenag dikecualikan sesuai permintaan)
  * Difilter sisa seat > 0 dan di-sort berdasarkan Group (A-Z):
- * 1. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 9 November 2026) -> Sisa: 4 Kursi (No. 19)
- * 2. UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11 Kursi (No. 23)
- * 3. UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 26 Oktober 2026) -> Sisa: 2 Kursi (No. 14)
- * 4. UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 9 November 2026) -> Sisa: 5 Kursi (No. 18)
+ * 1. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 7 Kursi (No. 4)
+ * 2. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 26 Oktober 2026) -> Sisa: 4 Kursi (No. 12)
+ * 3. UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11 Kursi (No. 20)
+ * 4. UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 4 Kursi (No. 5)
+ * 5. UMRAH REGULER MAHABBAH 13H OD-PDG 1448H (Selasa, 27 Oktober 2026) -> Sisa: 1 Kursi (No. 13)
+ * 6. UMRAH SUPER HEMAT 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 3 Kursi (No. 6)
  */
 export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
   {
-    no: 19,
+    no: 4,
     group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 9 November 2026',
+    departureDate: 'Senin, 5 Oktober 2026',
+    sisaSeat: 7,
+  },
+  {
+    no: 12,
+    group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
+    departureDate: 'Senin, 26 Oktober 2026',
     sisaSeat: 4,
   },
   {
-    no: 23,
+    no: 20,
     group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)',
     departureDate: 'Rabu, 13 Januari 2027',
     sisaSeat: 11,
   },
   {
-    no: 14,
+    no: 5,
     group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 26 Oktober 2026',
-    sisaSeat: 2,
+    departureDate: 'Senin, 5 Oktober 2026',
+    sisaSeat: 4,
   },
   {
-    no: 18,
-    group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 9 November 2026',
-    sisaSeat: 5,
+    no: 13,
+    group: 'UMRAH REGULER MAHABBAH 13H OD-PDG 1448H',
+    departureDate: 'Selasa, 27 Oktober 2026',
+    sisaSeat: 1,
+  },
+  {
+    no: 6,
+    group: 'UMRAH SUPER HEMAT 11H GA-PLM 1448H',
+    departureDate: 'Senin, 5 Oktober 2026',
+    sisaSeat: 3,
   },
 ];
 
@@ -49,7 +63,7 @@ export function isHajiKhususKemenag(text?: string): boolean {
   );
 }
 
-const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v7';
+const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v8';
 
 /**
  * Sort data kursi berdasarkan Group secara alfabetis, lalu berdasarkan No/Tanggal
@@ -116,7 +130,7 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
   // Endpoint ini menghubungkan langsung ke https://seat.zafatour.com/ di backend tanpa terkena blokir CORS
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     const res = await fetch(`/api/seats?t=${Date.now()}`, {
       signal: controller.signal,
       cache: 'no-cache',

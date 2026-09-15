@@ -25,6 +25,7 @@ import {
   WHATSAPP_NUMBER,
 } from '../data/constants';
 import { loadLocal, saveLocal } from './storageHelper';
+import { normalizeDateToISO } from '../utils/seatSync';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 export const FIREBASE_PROJECT_INFO = {
@@ -354,7 +355,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
 
   for (const seat of seats) {
     const trimmedTitle = (seat.group || '').trim();
-    if (!trimmedTitle || isHajiKhususKemenag(trimmedTitle)) continue;
+    if (!trimmedTitle || isHajiKhususKemenag(trimmedTitle) || seat.sisaSeat <= 0) continue;
     const key = trimmedTitle.toLowerCase();
 
     if (!groupedSeats.has(key)) {
@@ -367,6 +368,15 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
         sisaSeat: seat.sisaSeat,
       });
     }
+  }
+
+  // Sort jadwal masing-masing group paket secara kronologis berdasarkan tanggal keberangkatan
+  for (const entry of groupedSeats.values()) {
+    entry.schedules.sort((a, b) => {
+      const da = normalizeDateToISO(a.departureDate) || a.departureDate;
+      const db = normalizeDateToISO(b.departureDate) || b.departureDate;
+      return da.localeCompare(db);
+    });
   }
 
   // 2. Ambil paket yang sudah ada dari database paket
@@ -409,7 +419,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
       const updatedPkg: UmrahPackage = {
         ...existing,
         category: normalizedCategory,
-        departureDate: primaryDate || existing.departureDate,
+        departureDate: primaryDate || '',
         departureDates: dates,
         seatSchedules: entry.schedules,
         updatedAt: new Date().toISOString(),
@@ -486,6 +496,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
       const updatedPkg: UmrahPackage = {
         ...pkg,
         category: normalizedCategory,
+        departureDate: '',
         departureDates: [], // Tanggal sudah tidak ada di seat online
         seatSchedules: [],
         updatedAt: new Date().toISOString(),
