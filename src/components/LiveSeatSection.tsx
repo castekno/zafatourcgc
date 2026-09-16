@@ -131,18 +131,6 @@ export default function LiveSeatSection() {
             <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
               Sisa Seat Tersedia (ZafaTour)
             </h2>
-            <p className="text-slate-600 text-sm mt-2 max-w-3xl leading-relaxed">
-              Data kursi keberangkatan Umroh & Haji disinkronkan langsung dari link{' '}
-              <a
-                href="https://seat.zafatour.com/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-700 hover:text-blue-900 font-bold underline inline-flex items-center gap-0.5"
-              >
-                https://seat.zafatour.com/ <ExternalLink className="w-3.5 h-3.5 ml-0.5 inline" />
-              </a>
-              . Menampilkan daftar paket dengan sisa kursi &gt; 0, diurutkan berdasarkan <strong>Group</strong> agar mudah dicek.
-            </p>
 
             {officialUpdate && (
               <div className="mt-2 text-xs font-semibold text-slate-500 flex items-center gap-1.5">
