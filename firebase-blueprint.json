@@ -73,6 +73,20 @@
         "updatedAt": { "type": "string", "description": "Timestamp when updated" }
       },
       "required": ["id"]
+    },
+    "PrayerConfig": {
+      "title": "PrayerConfig",
+      "description": "User location coordinates and prayer times configuration stored in Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Identifier for config" },
+        "latitude": { "type": "number", "description": "Latitude of the gadget/location" },
+        "longitude": { "type": "number", "description": "Longitude of the gadget/location" },
+        "cityName": { "type": "string", "description": "Detected city name or label" },
+        "method": { "type": "string", "description": "Calculation method used" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id", "latitude", "longitude"]
     }
   },
   "firestore": {
@@ -91,6 +105,10 @@
     "/settings/{settingId}": {
       "schema": "Setting",
       "description": "Application settings including persistent logo stored in Firestore"
+    },
+    "/prayer_settings/{configId}": {
+      "schema": "PrayerConfig",
+      "description": "Saved prayer settings and location data"
     }
   }
 }

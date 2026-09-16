@@ -7,7 +7,10 @@ import {
   X,
   Users,
   Settings as SettingsIcon,
+  MapPin,
+  Clock,
 } from 'lucide-react';
+import { UserLocationInfo, PrayerCountdownInfo } from '../types';
 
 interface NavbarProps {
   logoUrl: string;
@@ -17,6 +20,8 @@ interface NavbarProps {
   onOpenSettings: () => void;
   activeSection: string;
   onSelectSection: (section: string) => void;
+  currentLocation?: UserLocationInfo | null;
+  prayerCountdown?: PrayerCountdownInfo | null;
 }
 
 export default function Navbar({
@@ -27,6 +32,8 @@ export default function Navbar({
   onOpenSettings,
   activeSection,
   onSelectSection,
+  currentLocation,
+  prayerCountdown,
 }: NavbarProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -34,6 +41,7 @@ export default function Navbar({
     { id: 'packages', label: 'Paket Umroh & Haji' },
     { id: 'hotels', label: 'Master Hotel' },
     { id: 'seats', label: 'Sisa Kursi Seat' },
+    { id: 'prayer', label: 'Jadwal Shalat' },
     { id: 'documentation', label: 'Dokumentasi' },
     { id: 'contact', label: 'Lokasi & Kontak' },
   ];
@@ -47,18 +55,63 @@ export default function Navbar({
     }
   };
 
+  const handleScrollToTop = () => {
+    onSelectSection('packages');
+    setIsMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <header
       id="main-header"
       className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-blue-100 shadow-sm"
     >
+      {/* Ultra-minimal Herobar Info Strip: Guaranteed 1 single line on mobile (never wraps) */}
+      <div
+        id="prayer-herobar-strip"
+        onClick={() => handleNavClick('prayer')}
+        className="bg-slate-950 text-slate-300 border-b border-slate-800/80 px-3 sm:px-6 h-7.5 flex items-center cursor-pointer hover:bg-slate-900 transition-colors select-none"
+        title="Klik untuk melihat Jadwal Shalat lengkap"
+      >
+        <div className="max-w-7xl mx-auto w-full flex items-center justify-between gap-2 overflow-hidden whitespace-nowrap text-[10px] sm:text-xs">
+          {/* Left: Location Pin */}
+          <div className="flex items-center gap-1.5 min-w-0 shrink-0 text-emerald-400 font-medium">
+            <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+            <span className="truncate max-w-[110px] xs:max-w-[170px] sm:max-w-none">
+              {currentLocation?.cityName || 'Palembang'}
+            </span>
+            <span className="hidden md:inline text-slate-500 font-normal">
+              (Koordinat Otomatis)
+            </span>
+          </div>
+
+          {/* Right: Next Prayer & Countdown */}
+          <div className="flex items-center gap-1.5 shrink-0 font-semibold text-slate-200">
+            <Clock className="w-3 h-3 text-sky-400 shrink-0" />
+            <span className="text-slate-400 hidden xs:inline">Shalat:</span>
+            <span className="text-amber-400 font-bold">
+              {prayerCountdown?.nextPrayerName || '...'}
+            </span>
+            <span className="text-slate-300">
+              {prayerCountdown?.nextPrayerTimeStr || ''}
+            </span>
+            {prayerCountdown && (
+              <span className="text-sky-300 font-mono text-[9px] sm:text-[11px] bg-slate-800/90 px-1.5 py-0.5 rounded border border-slate-700">
+                -{prayerCountdown.timeRemainingStr}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           {/* Logo & Brand */}
           <div
             id="brand-logo-container"
-            onClick={() => handleNavClick('hero')}
-            className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none py-1 min-w-0"
+            onClick={handleScrollToTop}
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none py-1 min-w-0 group"
+            title="Klik untuk kembali ke paling atas"
           >
             {logoUrl ? (
               <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
@@ -66,11 +119,14 @@ export default function Navbar({
                   id="brand-logo-image"
                   src={logoUrl}
                   alt="Zafa Tour Umrah & Hajj Services"
-                  className="h-10 sm:h-14 w-auto object-contain max-w-[110px] xs:max-w-[140px] sm:max-w-[200px] shrink-0"
+                  className="h-10 sm:h-14 w-auto object-contain max-w-[110px] xs:max-w-[140px] sm:max-w-[200px] shrink-0 group-hover:opacity-90 transition-opacity"
                   referrerPolicy="no-referrer"
                 />
                 <div className="flex flex-col border-l border-blue-200 pl-2 sm:pl-3 min-w-0">
-                  <span className="text-[11px] sm:text-xs font-black text-blue-950 uppercase tracking-tight leading-tight truncate">
+                  <span
+                    id="brand-text-perwakilan-cgc"
+                    className="text-[11px] sm:text-xs font-black text-blue-950 uppercase tracking-tight leading-tight truncate group-hover:text-sky-600 transition-colors"
+                  >
                     Perwakilan CGC
                   </span>
                   <span className="text-[9px] sm:text-[10px] text-slate-500 font-semibold leading-tight whitespace-nowrap">
@@ -80,7 +136,7 @@ export default function Navbar({
               </div>
             ) : (
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-900 flex items-center justify-center text-white font-black text-lg sm:text-xl shrink-0">
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-900 flex items-center justify-center text-white font-black text-lg sm:text-xl shrink-0 group-hover:bg-blue-800 transition-colors">
                   Z
                 </div>
                 <div className="min-w-0">
@@ -88,7 +144,10 @@ export default function Navbar({
                     ZAFA<span className="text-sky-600">TOUR</span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-blue-900 uppercase leading-none">
+                    <span
+                      id="brand-text-perwakilan-cgc-fallback"
+                      className="text-[10px] font-black text-blue-900 uppercase leading-none group-hover:text-sky-600 transition-colors"
+                    >
                       Perwakilan CGC
                     </span>
                     <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider whitespace-nowrap">

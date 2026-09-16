@@ -51,6 +51,11 @@ service cloud.firestore {
       allow delete: if true;
     }
 
+    match /prayer_settings/{configId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
     match /live_seats/{seatId} {
       allow read: if true;
       allow write: if true;

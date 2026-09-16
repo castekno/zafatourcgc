@@ -81,3 +81,37 @@ export interface AppSettings {
   firebaseProjectId: string;
   firestoreDatabaseName: string;
 }
+
+export type PrayerName =
+  | 'Imsak'
+  | 'Subuh'
+  | 'Terbit'
+  | 'Dzuhur'
+  | 'Ashar'
+  | 'Maghrib'
+  | 'Isya';
+
+export interface PrayerTimeSlot {
+  name: PrayerName;
+  timeString: string; // HH:mm
+  dateObj: Date;
+  isNext: boolean;
+  isCurrent: boolean;
+  passed: boolean;
+}
+
+export interface UserLocationInfo {
+  latitude: number;
+  longitude: number;
+  cityName: string;
+  districtName?: string;
+  source: 'gps' | 'fallback' | 'custom';
+  updatedAt: string;
+}
+
+export interface PrayerCountdownInfo {
+  nextPrayerName: PrayerName;
+  nextPrayerTimeStr: string;
+  timeRemainingStr: string; // e.g. "01:45:20"
+  totalSecondsRemaining: number;
+}

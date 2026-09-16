@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import LiveSeatSection from './components/LiveSeatSection';
 import HotelMasterSection from './components/HotelMasterSection';
 import PackageSection from './components/PackageSection';
+import PrayerScheduleSection from './components/PrayerScheduleSection';
 import DocumentationSection from './components/DocumentationSection';
 import Footer from './components/Footer';
 import AdminLoginModal from './components/AdminLoginModal';
@@ -13,8 +14,15 @@ import {
   DocumentationItem,
   AppSettings,
   SeatInfo,
+  UserLocationInfo,
+  PrayerCountdownInfo,
 } from './types';
 import { fetchLiveSeatData, isHajiKhususKemenag, isPlmOrCgk } from './services/seatService';
+import {
+  getSavedLocation,
+  getNextPrayerCountdown,
+  DEFAULT_LOCATION,
+} from './services/prayerService';
 import {
   getHotels,
   saveHotel,
@@ -40,6 +48,10 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Prayer and Location state
+  const [currentLocation, setCurrentLocation] = useState<UserLocationInfo>(DEFAULT_LOCATION);
+  const [prayerCountdown, setPrayerCountdown] = useState<PrayerCountdownInfo | null>(null);
 
   // Admin state
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
@@ -92,7 +104,23 @@ export default function App() {
   useEffect(() => {
     testConnection();
     loadAllData();
+
+    // Load initial saved/default location and countdown for Herobar
+    getSavedLocation().then((loc) => {
+      setCurrentLocation(loc);
+      setPrayerCountdown(getNextPrayerCountdown(loc, new Date()));
+    });
   }, []);
+
+  // Live countdown ticker for Herobar
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (currentLocation) {
+        setPrayerCountdown(getNextPrayerCountdown(currentLocation, new Date()));
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [currentLocation]);
 
   const handleSyncPackages = async () => {
     try {
@@ -179,6 +207,8 @@ export default function App() {
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         activeSection={activeSection}
         onSelectSection={setActiveSection}
+        currentLocation={currentLocation}
+        prayerCountdown={prayerCountdown}
       />
 
       {/* Main Content */}
@@ -205,6 +235,14 @@ export default function App() {
 
         {/* Real-Time Live Seat Data (https://seat.zafatour.com/ with seats > 0) */}
         <LiveSeatSection />
+
+        {/* Jadwal Shalat Real-Time Otomatis Berdasarkan Koordinat Gadget (Sebelum Group Dokumentasi) */}
+        <PrayerScheduleSection
+          onLocationUpdated={(loc) => {
+            setCurrentLocation(loc);
+            setPrayerCountdown(getNextPrayerCountdown(loc, new Date()));
+          }}
+        />
 
         {/* Group 2: Group Dokumentasi (Dynamic photos without count limit) */}
         <DocumentationSection
