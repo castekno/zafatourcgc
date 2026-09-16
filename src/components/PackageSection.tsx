@@ -32,7 +32,7 @@ import {
   isDateMatching,
   normalizeDateToISO,
 } from '../utils/seatSync';
-import { getCategoryFromTitle, isHajiKhususKemenag } from '../firebase/service';
+import { getCategoryFromTitle, isHajiKhususKemenag, isPlmOrCgk } from '../firebase/service';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 
 interface PackageSectionProps {
@@ -78,18 +78,18 @@ export default function PackageSection({
   const [deletePkgTarget, setDeletePkgTarget] = useState<{ id: string; title: string } | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
-  // Local active seats state (synced with props or fetched as fallback)
+  // Local active seats state (synced with props or fetched as fallback) - Khusus PLM & CGK
   const [activeSeats, setActiveSeats] = useState<SeatInfo[]>(
-    seats.filter((s) => !isHajiKhususKemenag(s.group))
+    seats.filter((s) => !isHajiKhususKemenag(s.group) && isPlmOrCgk(s.group))
   );
 
   useEffect(() => {
     if (seats && seats.length > 0) {
-      setActiveSeats(seats.filter((s) => !isHajiKhususKemenag(s.group)));
+      setActiveSeats(seats.filter((s) => !isHajiKhususKemenag(s.group) && isPlmOrCgk(s.group)));
     } else {
       fetchLiveSeatData()
         .then((data) => {
-          setActiveSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group)));
+          setActiveSeats(data.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group) && isPlmOrCgk(s.group)));
         })
         .catch((err) => console.warn('Could not load seats for sync:', err));
     }
@@ -188,9 +188,9 @@ export default function PackageSection({
   // Sorting: Default 'group' sesuai Group di https://seat.zafatour.com/ agar mudah mengeceknya
   const [packageSortBy, setPackageSortBy] = useState<'group' | 'date'>('group');
 
-  // Pastikan Haji Khusus Kemenag tidak pernah dimasukkan ke paket
+  // Pastikan Haji Khusus Kemenag tidak pernah dimasukkan ke paket dan HANYA proses/tampilkan paket dengan unsur kata PLM dan CGK
   const sortedPackages = [...packages]
-    .filter((p) => !isHajiKhususKemenag(p.title))
+    .filter((p) => !isHajiKhususKemenag(p.title) && isPlmOrCgk(p.title))
     .sort((a, b) => {
       if (packageSortBy === 'group') {
         const groupComp = (a.title || '').localeCompare(b.title || '', 'id');
@@ -425,15 +425,21 @@ export default function PackageSection({
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-900 text-xs font-bold uppercase tracking-wider mb-2">
-              <Compass className="w-3.5 h-3.5 text-blue-700" />
-              Group Database Paket
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-100 text-blue-900 text-xs font-bold uppercase tracking-wider">
+                <Compass className="w-3.5 h-3.5 text-blue-700" />
+                Group Database Paket
+              </div>
+              <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold">
+                <Plane className="w-3 h-3 text-emerald-600" />
+                Khusus Keberangkatan PLM & CGK
+              </div>
             </div>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
               Paket Haji & Umroh <br /> <span className="text-emerald-600 block sm:inline">Zafatour CGC</span>
             </h2>
             <p className="text-slate-600 text-sm mt-1">
-              Data paket tersinkronisasi otomatis dari Seat Online Zafa Tour.
+              Data paket tersinkronisasi otomatis dari Seat Online Zafa Tour (khusus rute PLM & CGK).
             </p>
           </div>
 

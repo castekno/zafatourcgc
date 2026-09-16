@@ -211,6 +211,16 @@ export function isHajiKhususKemenag(text?: string): boolean {
   );
 }
 
+/**
+ * Memeriksa apakah teks / nama Group mengandung unsur kata "PLM" atau "CGK".
+ * Hanya paket dengan unsur kata PLM atau CGK yang diproses dan ditampilkan di data paket.
+ */
+export function isPlmOrCgk(text?: string): boolean {
+  if (!text) return false;
+  const upper = text.toUpperCase();
+  return upper.includes('PLM') || upper.includes('CGK');
+}
+
 // ==================== PACKAGES (100% FIRESTORE CLIENT SDK) ====================
 
 export async function fetchPackages(): Promise<UmrahPackage[]> {
@@ -223,8 +233,8 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
         const items: UmrahPackage[] = [];
         snap.forEach((d) => {
           const pkgData = { id: d.id, ...(d.data() as any) };
-          if (isHajiKhususKemenag(pkgData.title)) {
-            // Hapus otomatis dari Firestore jika sebelumnya sempat masuk
+          if (isHajiKhususKemenag(pkgData.title) || !isPlmOrCgk(pkgData.title)) {
+            // Hapus otomatis dari Firestore jika bukan PLM/CGK atau merupakan Haji Khusus Kemenag
             deleteDoc(doc(db, 'packages', d.id)).catch(() => {});
           } else {
             items.push(pkgData);
@@ -239,7 +249,7 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
   }
 
   const local = loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
-  const filtered = local.filter((p) => !isHajiKhususKemenag(p.title));
+  const filtered = local.filter((p) => !isHajiKhususKemenag(p.title) && isPlmOrCgk(p.title));
   if (filtered.length !== local.length) {
     saveLocal(STORAGE_KEYS.PACKAGES, filtered);
   }
@@ -350,12 +360,19 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
     return fetchPackages();
   }
 
-  // 1. Kelompokkan data seat berdasarkan nama paket (group) - Abaikan Haji Khusus Kemenag
+  // 1. Kelompokkan data seat berdasarkan nama paket (group) - HANYA unsur PLM dan CGK, Abaikan Haji Khusus Kemenag
   const groupedSeats = new Map<string, { displayTitle: string; schedules: SeatSchedule[] }>();
 
   for (const seat of seats) {
     const trimmedTitle = (seat.group || '').trim();
-    if (!trimmedTitle || isHajiKhususKemenag(trimmedTitle) || seat.sisaSeat <= 0) continue;
+    if (
+      !trimmedTitle ||
+      isHajiKhususKemenag(trimmedTitle) ||
+      !isPlmOrCgk(trimmedTitle) ||
+      seat.sisaSeat <= 0
+    ) {
+      continue;
+    }
     const key = trimmedTitle.toLowerCase();
 
     if (!groupedSeats.has(key)) {
@@ -385,7 +402,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
   const existingMap = new Map<string, UmrahPackage>();
 
   for (const pkg of existingPackages) {
-    if (isHajiKhususKemenag(pkg.title)) {
+    if (isHajiKhususKemenag(pkg.title) || !isPlmOrCgk(pkg.title)) {
       if (db) {
         deleteDoc(doc(db, 'packages', pkg.id)).catch(() => {});
       }
@@ -483,7 +500,7 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
   // 4. Sertakan juga paket di database yang tanggalnya sudah tidak ada di data seat online
   // Kosongkan tanggal keberangkatan agar memunculkan info "Paket Habis"
   for (const [key, pkg] of existingMap.entries()) {
-    if (isHajiKhususKemenag(pkg.title)) continue;
+    if (isHajiKhususKemenag(pkg.title) || !isPlmOrCgk(pkg.title)) continue;
     if (!groupedSeats.has(key)) {
       const currentCat = pkg.category;
       const normalizedCategory =
@@ -513,8 +530,10 @@ export async function syncPackagesFromSeatData(seats: SeatInfo[]): Promise<Umrah
     }
   }
 
-  // 5. Simpan ke local storage (pastikan tidak ada Haji Khusus Kemenag)
-  const finalPackages = resultPackages.filter((p) => !isHajiKhususKemenag(p.title));
+  // 5. Simpan ke local storage (pastikan HANYA PLM dan CGK, dan tidak ada Haji Khusus Kemenag)
+  const finalPackages = resultPackages.filter(
+    (p) => !isHajiKhususKemenag(p.title) && isPlmOrCgk(p.title)
+  );
   saveLocal(STORAGE_KEYS.PACKAGES, finalPackages);
 
   return finalPackages;

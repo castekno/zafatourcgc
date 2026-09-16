@@ -63,6 +63,16 @@ export function isHajiKhususKemenag(text?: string): boolean {
   );
 }
 
+/**
+ * Memeriksa apakah teks / nama Group mengandung unsur kata "PLM" atau "CGK".
+ * Hanya paket dengan unsur kata PLM atau CGK yang diproses dan ditampilkan.
+ */
+export function isPlmOrCgk(text?: string): boolean {
+  if (!text) return false;
+  const upper = text.toUpperCase();
+  return upper.includes('PLM') || upper.includes('CGK');
+}
+
 const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v8';
 
 /**

@@ -14,7 +14,7 @@ import {
   AppSettings,
   SeatInfo,
 } from './types';
-import { fetchLiveSeatData, isHajiKhususKemenag } from './services/seatService';
+import { fetchLiveSeatData, isHajiKhususKemenag, isPlmOrCgk } from './services/seatService';
 import {
   getHotels,
   saveHotel,
@@ -75,11 +75,12 @@ export default function App() {
       setSettings(sData);
 
       // 3. Synchronize package database with online seat data every load/refresh:
-      // - Packages from seat data become package names in database
+      // - Packages from seat data become package names in database (khusus PLM & CGK)
       // - If already exists, refresh latest departure dates & seat counts
       // - If all dates are gone, departureDates becomes empty -> "Paket Habis"
       // - Category: "UMRAH", "HAJI", "HAJI KHUSUS"
-      const syncedPackages = await syncPackagesWithSeats(allSeats);
+      const plmCgkSeats = allSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
+      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats);
       setPackages(syncedPackages);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -98,7 +99,8 @@ export default function App() {
       const rawSeats = await fetchLiveSeatData(true);
       const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
       setSeats(availableSeats);
-      const synced = await syncPackagesWithSeats(availableSeats);
+      const plmCgkSeats = availableSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
+      const synced = await syncPackagesWithSeats(plmCgkSeats);
       setPackages(synced);
     } catch (err) {
       console.error('Error manually syncing packages with seats:', err);
