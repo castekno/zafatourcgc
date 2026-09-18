@@ -179,6 +179,7 @@ export default function Navbar({
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Tombol Cek Kursi */}
             <button
               id="btn-nav-check-seats"
               onClick={() => handleNavClick('seats')}
@@ -186,7 +187,33 @@ export default function Navbar({
             >
               <Users className="w-3.5 h-3.5 shrink-0" />
               <span className="hidden sm:inline">Cek Sisa Kursi Tersedia</span>
-              <span className="inline sm:hidden">Cek Sisa Kursi</span>
+              <span className="sm:inline">Cek</span>
+            </button>
+
+            {/* Tombol Jadwal Shalat dengan Logo Masjid (Mode Mobile di sebelah kanan Cek Kursi) */}
+            <button
+              id="btn-nav-prayer-mobile"
+              onClick={() => handleNavClick('prayer')}
+              className="flex sm:hidden items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/80 rounded-lg shadow-xs transition-all active:scale-95 shrink-0 whitespace-nowrap"
+              title="Lihat Jadwal Shalat"
+            >
+              {/* Logo Masjid SVG */}
+              <svg
+                className="w-3.5 h-3.5 text-emerald-700 shrink-0 fill-current"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Kubah utama & bulan sabit */}
+                <path d="M12 2a.5.5 0 0 1 .5.5v1.07A5.5 5.5 0 0 1 17 9v1h-1V9a4.5 4.5 0 0 0-3.5-4.4V5a.5.5 0 0 1-1 0v-.4A4.5 4.5 0 0 0 8 9v1H7V9a5.5 5.5 0 0 1 4.5-5.43V2.5a.5.5 0 0 1 .5-.5z" />
+                <path d="M12 1.5a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" />
+                {/* Bangunan utama & pintu lengkung */}
+                <path d="M6 10h12v11H6V10zm6 3a2.5 2.5 0 0 0-2.5 2.5V21h5v-5.5A2.5 2.5 0 0 0 12 13z" />
+                {/* Menara kiri */}
+                <path d="M2.5 8.5a1.5 1.5 0 0 1 2.5-1.12V5.5a.5.5 0 0 1 1 0v2.03A1.5 1.5 0 0 1 5.5 10H5v11H3V10h-.5a1.5 1.5 0 0 1-1.5-1.5h1.5z" />
+                {/* Menara kanan */}
+                <path d="M19 10h-.5V7.53a.5.5 0 0 1 1 0v1.88A1.5 1.5 0 0 1 21 10h-.5v11h-2V10h.5z" />
+              </svg>
+              <span>Shalat</span>
             </button>
 
             {/* Desktop Admin / Login */}

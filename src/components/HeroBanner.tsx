@@ -26,7 +26,8 @@ export default function HeroBanner({
             onClick={onCheckSeats}
             className="px-4 py-1.5 sm:px-5 sm:py-2 bg-sky-500 hover:bg-sky-400 text-white text-xs sm:text-sm font-semibold rounded-lg shadow-sm hover:shadow-sky-500/20 transition-all transform active:scale-95"
           >
-            Cek Sisa Kursi Tersedia
+            <span className="hidden sm:inline">Cek Sisa Kursi Tersedia</span>
+            
           </button>
         </div>
       </div>
