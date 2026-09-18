@@ -199,12 +199,9 @@ async function startServer() {
   }
 
   const VERIFIED_FALLBACK_SEATS: SeatRow[] = [
-    { no: 4, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 7 },
-    { no: 12, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 4 },
-    { no: 20, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
-    { no: 5, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 4 },
-    { no: 13, group: 'UMRAH REGULER MAHABBAH 13H OD-PDG 1448H', departureDate: 'Selasa, 27 Oktober 2026', sisaSeat: 1 },
-    { no: 6, group: 'UMRAH SUPER HEMAT 11H GA-PLM 1448H', departureDate: 'Senin, 5 Oktober 2026', sisaSeat: 3 },
+    { no: 16, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 9 November 2026', sisaSeat: 1 },
+    { no: 17, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 16 November 2026', sisaSeat: 2 },
+    { no: 19, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 11 },
   ];
 
   let seatCache: {

@@ -6,51 +6,30 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 /**
  * DATA RESMI TERVERIFIKASI LANGSUNG DARI https://seat.zafatour.com/
  * Tabel Ketersediaan Seat Paket Umrah PT. Zafa Mulia Mandiri
- * (Haji Khusus Kemenag dikecualikan sesuai permintaan)
+ * (Haji Khusus Kemenag dikecualikan sesuai ketentuan)
  * Difilter sisa seat > 0 dan di-sort berdasarkan Group (A-Z):
- * 1. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 7 Kursi (No. 4)
- * 2. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 26 Oktober 2026) -> Sisa: 4 Kursi (No. 12)
- * 3. UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11 Kursi (No. 20)
- * 4. UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 4 Kursi (No. 5)
- * 5. UMRAH REGULER MAHABBAH 13H OD-PDG 1448H (Selasa, 27 Oktober 2026) -> Sisa: 1 Kursi (No. 13)
- * 6. UMRAH SUPER HEMAT 11H GA-PLM 1448H (Senin, 5 Oktober 2026) -> Sisa: 3 Kursi (No. 6)
+ * 1. UMRAH HEMAT BERKAH 11H GA-PLM 1448H (Senin, 9 November 2026) -> Sisa: 1 Kursi (No. 16)
+ * 2. UMRAH REGULER MAHABBAH 11H GA-PLM 1448H (Senin, 16 November 2026) -> Sisa: 2 Kursi (No. 17)
+ * 3. UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11 Kursi (No. 19)
  */
 export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
   {
-    no: 4,
+    no: 16,
     group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 5 Oktober 2026',
-    sisaSeat: 7,
-  },
-  {
-    no: 12,
-    group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 26 Oktober 2026',
-    sisaSeat: 4,
-  },
-  {
-    no: 20,
-    group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)',
-    departureDate: 'Rabu, 13 Januari 2027',
-    sisaSeat: 11,
-  },
-  {
-    no: 5,
-    group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 5 Oktober 2026',
-    sisaSeat: 4,
-  },
-  {
-    no: 13,
-    group: 'UMRAH REGULER MAHABBAH 13H OD-PDG 1448H',
-    departureDate: 'Selasa, 27 Oktober 2026',
+    departureDate: 'Senin, 9 November 2026',
     sisaSeat: 1,
   },
   {
-    no: 6,
-    group: 'UMRAH SUPER HEMAT 11H GA-PLM 1448H',
-    departureDate: 'Senin, 5 Oktober 2026',
-    sisaSeat: 3,
+    no: 17,
+    group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
+    departureDate: 'Senin, 16 November 2026',
+    sisaSeat: 2,
+  },
+  {
+    no: 19,
+    group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)',
+    departureDate: 'Rabu, 13 Januari 2027',
+    sisaSeat: 11,
   },
 ];
 
@@ -162,6 +141,8 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
         if (valid.length > 0) {
           const sorted = sortSeatsByGroup(valid);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
+          // Simpan juga ke Firestore live_seats secara background agar database Firestore selalu sinkron
+          syncSeatsListToFirestore(sorted).catch(() => {});
           return sorted;
         }
       }
@@ -170,32 +151,40 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
     console.warn('Endpoint /api/seats fetch error, falling back to secondary methods:', apiErr);
   }
 
-  // 2. Coba fetch live dari multiple CORS Proxies secara berurutan jika API lokal tidak tersedia
+  // 2. Coba fetch live dari multiple CORS Proxies secara berurutan jika API lokal tidak tersedia (misal static hosting)
   const proxies = [
-    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url: string) => `https://thingproxy.freeboard.io/fetch/${url}`,
+    async () => {
+      const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent('https://seat.zafatour.com/')}`);
+      return await res.text();
+    },
+    async () => {
+      const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent('https://seat.zafatour.com/')}`);
+      return await res.text();
+    },
+    async () => {
+      const res = await fetch(`https://thingproxy.freeboard.io/fetch/https://seat.zafatour.com/`);
+      return await res.text();
+    },
   ];
 
   for (const proxyFn of proxies) {
     try {
-      const target = proxyFn('https://seat.zafatour.com/');
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const html = await Promise.race([
+        proxyFn(),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Proxy timeout')), 4000)),
+      ]);
 
-      const res = await fetch(target, { signal: controller.signal, cache: 'no-cache' });
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const html = await res.text();
+      if (html && typeof html === 'string') {
         const parsed = parseZafaHtml(html);
         if (parsed.length > 0) {
           const sorted = sortSeatsByGroup(parsed);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
+          syncSeatsListToFirestore(sorted).catch(() => {});
           return sorted;
         }
       }
     } catch {
-      // Lanjut ke metode berikutnya
+      // Lanjut ke proxy berikutnya
     }
   }
 
@@ -235,16 +224,21 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
   return sortSeatsByGroup(OFFICIAL_ZAFA_SEATS);
 }
 
-// Fungsi sinkronisasi ke Firestore agar admin bisa sewaktu-waktu memperbarui seat manual/otomatis
-export async function syncOfficialSeatsToFirestore(): Promise<void> {
+// Fungsi sinkronisasi list kursi ke Firestore agar Firestore selalu terbarui
+export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void> {
   const db = getFirestoreDb();
-  if (!db) return;
+  if (!db || !seats || seats.length === 0) return;
 
-  for (const seat of OFFICIAL_ZAFA_SEATS) {
+  for (const seat of seats) {
     try {
       await setDoc(doc(db, 'live_seats', `seat_${seat.no}`), seat);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `live_seats/seat_${seat.no}`);
     }
   }
+}
+
+// Fungsi sinkronisasi ke Firestore agar admin bisa sewaktu-waktu memperbarui seat manual/otomatis
+export async function syncOfficialSeatsToFirestore(): Promise<void> {
+  return syncSeatsListToFirestore(OFFICIAL_ZAFA_SEATS);
 }
