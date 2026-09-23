@@ -39,6 +39,7 @@ import {
   saveSettings,
   DEFAULT_APP_SETTINGS,
   testConnection,
+  isFirestoreQuotaExceeded,
 } from './firebase/service';
 
 export default function App() {
@@ -92,7 +93,8 @@ export default function App() {
       // - If all dates are gone, departureDates becomes empty -> "Paket Habis"
       // - Category: "UMRAH", "HAJI", "HAJI KHUSUS"
       const plmCgkSeats = allSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
-      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats);
+      // false: pengunjung umum tidak menembak write Firestore berulang-ulang
+      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats, false);
       setPackages(syncedPackages);
     } catch (err) {
       console.error('Error loading data:', err);
@@ -128,7 +130,8 @@ export default function App() {
       const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
       setSeats(availableSeats);
       const plmCgkSeats = availableSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
-      const synced = await syncPackagesWithSeats(plmCgkSeats);
+      // true: sinkronisasi eksplisit oleh Admin disimpan ke cloud database jika kuota tersedia
+      const synced = await syncPackagesWithSeats(plmCgkSeats, true);
       setPackages(synced);
     } catch (err) {
       console.error('Error manually syncing packages with seats:', err);
@@ -210,6 +213,13 @@ export default function App() {
         currentLocation={currentLocation}
         prayerCountdown={prayerCountdown}
       />
+
+      {/* Admin Notice when Firestore Free Tier Quota is Exceeded */}
+      {isAdmin && isFirestoreQuotaExceeded() && (
+        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-800">
+          <strong>Pemberitahuan Admin:</strong> Batas kuota tulis Firestore harian (paket gratis Firebase) telah tercapai hari ini. Sistem otomatis beralih ke penyimpanan lokal (LocalStorage), data Anda tetap aman dan situs tetap beroperasi normal tanpa kendala.
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex-grow">

@@ -1,5 +1,5 @@
 import { SeatInfo } from '../types';
-import { getFirestoreDb, handleFirestoreError, OperationType } from '../firebase/service';
+import { getFirestoreDb, handleFirestoreError, isFirestoreQuotaExceeded, OperationType } from '../firebase/service';
 import { loadLocal, saveLocal } from '../firebase/storageHelper';
 import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
 
@@ -141,8 +141,6 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
         if (valid.length > 0) {
           const sorted = sortSeatsByGroup(valid);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
-          // Simpan juga ke Firestore live_seats secara background agar database Firestore selalu sinkron
-          syncSeatsListToFirestore(sorted).catch(() => {});
           return sorted;
         }
       }
@@ -179,7 +177,6 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
         if (parsed.length > 0) {
           const sorted = sortSeatsByGroup(parsed);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
-          syncSeatsListToFirestore(sorted).catch(() => {});
           return sorted;
         }
       }
@@ -224,8 +221,9 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
   return sortSeatsByGroup(OFFICIAL_ZAFA_SEATS);
 }
 
-// Fungsi sinkronisasi list kursi ke Firestore agar Firestore selalu terbarui
+// Fungsi sinkronisasi list kursi ke Firestore agar Firestore selalu terbarui (Hanya dipanggil manual bila diperlukan)
 export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void> {
+  if (isFirestoreQuotaExceeded()) return;
   const db = getFirestoreDb();
   if (!db || !seats || seats.length === 0) return;
 

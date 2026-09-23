@@ -98,7 +98,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<{ city: 
 }
 
 /**
- * Get Saved Location from Local Storage or Firestore
+ * Get Saved Location from Local Storage
  */
 export async function getSavedLocation(): Promise<UserLocationInfo> {
   try {
@@ -109,17 +109,6 @@ export async function getSavedLocation(): Promise<UserLocationInfo> {
         return parsed;
       }
     }
-
-    // Try fetching from Firestore if available
-    const db = getFirestoreDb();
-    if (db) {
-      const snap = await getDoc(doc(db, 'prayer_settings', 'latest_location'));
-      if (snap.exists()) {
-        const data = snap.data() as UserLocationInfo;
-        localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(data));
-        return data;
-      }
-    }
   } catch (err) {
     console.warn('Error reading saved location:', err);
   }
@@ -128,21 +117,13 @@ export async function getSavedLocation(): Promise<UserLocationInfo> {
 }
 
 /**
- * Save Location to LocalStorage and Firestore
+ * Save Location to LocalStorage (Browser specific user preference)
  */
 export async function saveLocation(location: UserLocationInfo): Promise<void> {
   try {
     localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(location));
-
-    const db = getFirestoreDb();
-    if (db) {
-      await setDoc(doc(db, 'prayer_settings', 'latest_location'), {
-        ...location,
-        updatedAt: new Date().toISOString(),
-      });
-    }
   } catch (err) {
-    console.warn('Could not persist location to Firestore:', err);
+    console.warn('Could not persist location to LocalStorage:', err);
   }
 }
 
