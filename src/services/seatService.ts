@@ -325,6 +325,10 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
 
   for (const seat of seats) {
     if (!seat || !seat.group || !seat.departureDate) continue;
+    // HANYA ambil data yang sisa seat-nya > 0 dan abaikan Haji Khusus Kemenag
+    if (typeof seat.sisaSeat !== 'number' || seat.sisaSeat <= 0) continue;
+    if (isHajiKhususKemenag(seat.group)) continue;
+
     const docId = generateLiveSeatDocId(seat.group, seat.departureDate);
     const slug = slugifyPackageTitle(seat.group);
     const iso = normalizeDateToISO(seat.departureDate) || '';
@@ -353,7 +357,15 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
   // Simpan setiap dokumen ke collection 'live_seats'
   for (const [docId, entry] of groupedDocs.entries()) {
     try {
-      const totalSeats = entry.batches.reduce((sum, b) => sum + (b.sisaSeat || 0), 0);
+      const validBatches = entry.batches.filter((b) => b && typeof b.sisaSeat === 'number' && b.sisaSeat > 0);
+      const totalSeats = validBatches.reduce((sum, b) => sum + (b.sisaSeat || 0), 0);
+
+      // Pastikan hanya menulis dokumen jika kursi > 0
+      if (totalSeats <= 0 || validBatches.length === 0) {
+        await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
+        continue;
+      }
+
       const docPayload: LiveSeatDoc = {
         id: docId,
         packageSlug: entry.packageSlug,
@@ -364,8 +376,8 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
         dateKey: entry.dateKey,
         totalSisaSeat: totalSeats,
         sisaSeat: totalSeats,
-        batches: entry.batches,
-        schedules: entry.batches,
+        batches: validBatches,
+        schedules: validBatches,
         updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'live_seats', docId), docPayload);
@@ -374,16 +386,32 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
     }
   }
 
-  // Bersihkan dokumen format lama 'seat_XX' jika ada di Firestore
+  // Bersihkan dokumen format lama 'seat_XX' atau dokumen yang kursinya sudah 0 dari Firestore
   try {
     const existingSnap = await getDocs(collection(db, 'live_seats'));
     for (const d of existingSnap.docs) {
       if (d.id.startsWith('seat_')) {
         await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+      } else if (d.id.startsWith('pkg-')) {
+        // HAPUS jika dokumen tidak tercantum dalam daftar aktif groupedDocs (artinya kursi sudah 0 atau jadwal sudah berakhir di seat.zafatour.com)
+        if (!groupedDocs.has(d.id)) {
+          await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+          continue;
+        }
+        const data = d.data();
+        if (
+          !data ||
+          typeof data.totalSisaSeat !== 'number' ||
+          data.totalSisaSeat <= 0 ||
+          (typeof data.sisaSeat === 'number' && data.sisaSeat <= 0) ||
+          isHajiKhususKemenag(data.group || data.packageTitle || '')
+        ) {
+          await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+        }
       }
     }
   } catch {
-    // Abaikan jika pembersihan lama gagal
+    // Abaikan jika pembersihan gagal
   }
 }
 

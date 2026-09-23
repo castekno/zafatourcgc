@@ -474,10 +474,10 @@ export async function syncPackagesFromSeatData(
     });
   }
 
-  // 1b. Rekonsiliasi tambahan dari Firestore koleksi 'live_seats':
-  // Jika di live_seats terdapat jadwal/kloter yang belum tercakup di seats, tambahkan ke groupedSeats
+  // 1b. Sumber cadangan dari Firestore koleksi 'live_seats':
+  // HANYA jika seats dari jaringan kosong (misal mode offline), gunakan live_seats Firestore sebagai sumber
   const db = getFirestoreDb();
-  if (db) {
+  if (db && (!seats || seats.length === 0)) {
     try {
       const liveSeatsSnap = await getDocs(collection(db, 'live_seats'));
       liveSeatsSnap.forEach((docSnap) => {
@@ -661,8 +661,7 @@ export async function syncPackagesFromSeatData(
     }
   }
 
-  // 4. Sertakan juga paket di database yang saat ini tidak tercantum di groupedSeats
-  // PENTING: JANGAN mengosongkan/menghapus jadwal yang sudah tersimpan di dokumen paket jika dokumen paket memang memiliki jadwal & sisa kursi!
+  // 4. Sertakan juga paket di database yang saat ini tidak tercantum di groupedSeats (kursi habis / 0)
   for (const [key, pkg] of existingMap.entries()) {
     if (isHajiKhususKemenag(pkg.title) || !isPlmOrCgk(pkg.title)) continue;
     if (!groupedSeats.has(key)) {
@@ -674,23 +673,20 @@ export async function syncPackagesFromSeatData(
           ? 'HAJI KHUSUS'
           : (currentCat || getCategoryFromTitle(pkg.title));
 
-      // Jika paket di database sudah memiliki jadwal atau tanggal, pertahankan utuh
-      const existingSchedules = pkg.seatSchedules && pkg.seatSchedules.length > 0 ? pkg.seatSchedules : [];
-      const existingDates =
-        pkg.departureDates && pkg.departureDates.length > 0
-          ? pkg.departureDates
-          : pkg.departureDate
-          ? [pkg.departureDate]
-          : [];
-
-      const hasChanged = pkg.category !== normalizedCategory;
+      // Kursi di seat.zafatour.com sudah habis (0 semua):
+      // Kosongkan departureDates & seatSchedules sehingga statusnya menjadi "Paket Habis"
+      const hadDates =
+        (pkg.departureDates && pkg.departureDates.length > 0) ||
+        Boolean(pkg.departureDate) ||
+        (pkg.seatSchedules && pkg.seatSchedules.length > 0);
+      const hasChanged = hadDates || pkg.category !== normalizedCategory;
 
       const updatedPkg: UmrahPackage = {
         ...pkg,
         category: normalizedCategory,
-        departureDate: pkg.departureDate || (existingDates[0] || ''),
-        departureDates: existingDates,
-        seatSchedules: existingSchedules,
+        departureDate: '',
+        departureDates: [],
+        seatSchedules: [],
         updatedAt: hasChanged ? new Date().toISOString() : pkg.updatedAt,
       };
       resultPackages.push(updatedPkg);
@@ -698,6 +694,7 @@ export async function syncPackagesFromSeatData(
       if (db && persistToFirestore && !quotaExceededState && hasChanged) {
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
+          console.info(`[Auto-Sync Firestore] Paket '${updatedPkg.title}' ditandai 'Paket Habis' karena kursi di seat online sudah 0.`);
         } catch (err) {
           handleWriteQuotaError(err, 'Sinkronisasi Paket');
           handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
