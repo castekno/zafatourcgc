@@ -18,6 +18,7 @@ export type ArrivalAirportType =
   | 'Madinah Mohammad Bin Abdulaziz';
 
 export interface SeatSchedule {
+  no?: number;
   departureDate: string;
   sisaSeat: number;
 }

@@ -95,12 +95,45 @@ export function handleFirestoreError(
 // Global flag to prevent continuous failing writes when Firebase free quota is reached
 let quotaExceededState = false;
 
+export class FirestoreQuotaExceededError extends Error {
+  constructor(message?: string) {
+    super(
+      message ||
+        'Batas kuota tulis harian Firebase (Free Tier) telah tercapai. Operasi dibatalkan demi menjaga konsistensi database.'
+    );
+    this.name = 'FirestoreQuotaExceededError';
+  }
+}
+
 export function isFirestoreQuotaExceeded(): boolean {
   return quotaExceededState;
 }
 
 export function setFirestoreQuotaExceeded(val: boolean = true) {
   quotaExceededState = val;
+}
+
+function checkQuotaExceeded(operationName: string) {
+  if (quotaExceededState) {
+    throw new FirestoreQuotaExceededError(
+      `Batas kuota tulis harian Firebase telah tercapai. Operasi ${operationName} dibatalkan untuk menjaga keutuhan data.`
+    );
+  }
+}
+
+function handleWriteQuotaError(error: any, operationName: string) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  if (
+    errMsg.includes('resource-exhausted') ||
+    errMsg.includes('Quota limit exceeded') ||
+    errMsg.includes('Free daily write units') ||
+    error?.code === 'resource-exhausted'
+  ) {
+    quotaExceededState = true;
+    throw new FirestoreQuotaExceededError(
+      `Batas kuota tulis harian Firebase telah tercapai. Operasi ${operationName} dibatalkan.`
+    );
+  }
 }
 
 // Lazy initialization of Firebase Firestore directly targeting dbzafatourcgc client SDK
@@ -197,7 +230,19 @@ export async function fetchHotels(): Promise<Hotel[]> {
 }
 
 export async function saveHotelRecord(hotel: Hotel): Promise<void> {
-  // 1. Instant local persistence for UI speed
+  checkQuotaExceeded('Simpan Hotel');
+
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      await setDoc(doc(db, 'hotels', hotel.id), hotel);
+    } catch (error) {
+      handleWriteQuotaError(error, 'Simpan Hotel');
+      handleFirestoreError(error, OperationType.WRITE, `hotels/${hotel.id}`);
+    }
+  }
+
+  // Simpan ke local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
   const current = loadLocal<Hotel[]>(STORAGE_KEYS.HOTELS, INITIAL_HOTELS);
   const idx = current.findIndex((h) => h.id === hotel.id);
   const updated = [...current];
@@ -207,33 +252,25 @@ export async function saveHotelRecord(hotel: Hotel): Promise<void> {
     updated.unshift(hotel);
   }
   saveLocal(STORAGE_KEYS.HOTELS, updated);
-
-  // 2. Direct 100% Firestore Database persistence
-  const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
-    try {
-      await setDoc(doc(db, 'hotels', hotel.id), hotel);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `hotels/${hotel.id}`);
-    }
-  }
 }
 
 export async function deleteHotelRecord(id: string): Promise<void> {
-  // 1. Instant local persistence
-  const current = loadLocal<Hotel[]>(STORAGE_KEYS.HOTELS, INITIAL_HOTELS);
-  const updated = current.filter((h) => h.id !== id);
-  saveLocal(STORAGE_KEYS.HOTELS, updated);
+  checkQuotaExceeded('Hapus Hotel');
 
-  // 2. Direct 100% Firestore Database deletion
   const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
+  if (db) {
     try {
       await deleteDoc(doc(db, 'hotels', id));
     } catch (error) {
+      handleWriteQuotaError(error, 'Hapus Hotel');
       handleFirestoreError(error, OperationType.DELETE, `hotels/${id}`);
     }
   }
+
+  // Hapus dari local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
+  const current = loadLocal<Hotel[]>(STORAGE_KEYS.HOTELS, INITIAL_HOTELS);
+  const updated = current.filter((h) => h.id !== id);
+  saveLocal(STORAGE_KEYS.HOTELS, updated);
 }
 
 export function isHajiKhususKemenag(text?: string): boolean {
@@ -288,7 +325,19 @@ export async function fetchPackages(): Promise<UmrahPackage[]> {
 }
 
 export async function savePackageRecord(pkg: UmrahPackage): Promise<void> {
-  // 1. Instant local persistence
+  checkQuotaExceeded('Simpan Paket');
+
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      await setDoc(doc(db, 'packages', pkg.id), pkg);
+    } catch (error) {
+      handleWriteQuotaError(error, 'Simpan Paket');
+      handleFirestoreError(error, OperationType.WRITE, `packages/${pkg.id}`);
+    }
+  }
+
+  // Simpan ke local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
   const current = loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
   const idx = current.findIndex((p) => p.id === pkg.id);
   const updated = [...current];
@@ -298,33 +347,25 @@ export async function savePackageRecord(pkg: UmrahPackage): Promise<void> {
     updated.unshift(pkg);
   }
   saveLocal(STORAGE_KEYS.PACKAGES, updated);
-
-  // 2. Direct 100% Firestore Database persistence
-  const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
-    try {
-      await setDoc(doc(db, 'packages', pkg.id), pkg);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `packages/${pkg.id}`);
-    }
-  }
 }
 
 export async function deletePackageRecord(id: string): Promise<void> {
-  // 1. Instant local persistence
-  const current = loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
-  const updated = current.filter((p) => p.id !== id);
-  saveLocal(STORAGE_KEYS.PACKAGES, updated);
+  checkQuotaExceeded('Hapus Paket');
 
-  // 2. Direct 100% Firestore Database deletion
   const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
+  if (db) {
     try {
       await deleteDoc(doc(db, 'packages', id));
     } catch (error) {
+      handleWriteQuotaError(error, 'Hapus Paket');
       handleFirestoreError(error, OperationType.DELETE, `packages/${id}`);
     }
   }
+
+  // Hapus dari local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
+  const current = loadLocal<UmrahPackage[]>(STORAGE_KEYS.PACKAGES, INITIAL_PACKAGES);
+  const updated = current.filter((p) => p.id !== id);
+  saveLocal(STORAGE_KEYS.PACKAGES, updated);
 }
 
 /**
@@ -362,18 +403,22 @@ export function slugifyPackageTitle(title: string): string {
  * Hapus semua data dari database paket (Firestore & LocalStorage)
  */
 export async function clearAllPackages(): Promise<void> {
-  saveLocal(STORAGE_KEYS.PACKAGES, []);
+  checkQuotaExceeded('Hapus Semua Paket');
+
   const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
+  if (db) {
     try {
       const snap = await getDocs(collection(db, 'packages'));
       for (const d of snap.docs) {
         await deleteDoc(doc(db, 'packages', d.id));
       }
     } catch (e) {
+      handleWriteQuotaError(e, 'Hapus Semua Paket');
       handleFirestoreError(e, OperationType.DELETE, 'packages');
     }
   }
+
+  saveLocal(STORAGE_KEYS.PACKAGES, []);
 }
 
 /**
@@ -393,6 +438,10 @@ export async function syncPackagesFromSeatData(
   seats: SeatInfo[],
   persistToFirestore: boolean = false
 ): Promise<UmrahPackage[]> {
+  if (persistToFirestore) {
+    checkQuotaExceeded('Sinkronisasi Data Seat ke Cloud Firestore');
+  }
+
   if (!seats || seats.length === 0) {
     return fetchPackages();
   }
@@ -416,20 +465,31 @@ export async function syncPackagesFromSeatData(
       groupedSeats.set(key, { displayTitle: trimmedTitle, schedules: [] });
     }
     const entry = groupedSeats.get(key)!;
-    if (!entry.schedules.some((s) => s.departureDate === seat.departureDate)) {
+    // JIKA NAMA PAKET SAMA DAN TANGGAL SAMA:
+    // Cek apakah nomor urut (seat.no) atau sisa seat berbeda (misal No. 31 dan No. 33 sama-sama tanggal Senin, 4 Januari 2027).
+    // Keduanya adalah jadwal/kloter berbeda dan harus tetap dimasukkan sebagai jadwal yang berbeda.
+    const isDuplicate = entry.schedules.some(
+      (s) =>
+        (seat.no && s.no === seat.no) ||
+        (!seat.no && s.departureDate === seat.departureDate && s.sisaSeat === seat.sisaSeat)
+    );
+    if (!isDuplicate) {
       entry.schedules.push({
+        no: seat.no,
         departureDate: seat.departureDate,
         sisaSeat: seat.sisaSeat,
       });
     }
   }
 
-  // Sort jadwal masing-masing group paket secara kronologis berdasarkan tanggal keberangkatan
+  // Sort jadwal masing-masing group paket secara kronologis berdasarkan tanggal keberangkatan, lalu berdasarkan No
   for (const entry of groupedSeats.values()) {
     entry.schedules.sort((a, b) => {
       const da = normalizeDateToISO(a.departureDate) || a.departureDate;
       const db = normalizeDateToISO(b.departureDate) || b.departureDate;
-      return da.localeCompare(db);
+      const comp = da.localeCompare(db);
+      if (comp !== 0) return comp;
+      return (a.no || 0) - (b.no || 0);
     });
   }
 
@@ -487,6 +547,7 @@ export async function syncPackagesFromSeatData(
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
         } catch (err) {
+          handleWriteQuotaError(err, 'Sinkronisasi Paket');
           handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
         }
       }
@@ -531,6 +592,7 @@ export async function syncPackagesFromSeatData(
         try {
           await setDoc(doc(db, 'packages', newPkg.id), newPkg);
         } catch (err) {
+          handleWriteQuotaError(err, 'Sinkronisasi Paket');
           handleFirestoreError(err, OperationType.WRITE, `packages/${newPkg.id}`);
         }
       }
@@ -570,6 +632,7 @@ export async function syncPackagesFromSeatData(
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
         } catch (err) {
+          handleWriteQuotaError(err, 'Sinkronisasi Paket');
           handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
         }
       }
@@ -615,7 +678,19 @@ export async function fetchDocumentations(): Promise<DocumentationItem[]> {
 export async function saveDocumentationRecord(
   item: DocumentationItem
 ): Promise<void> {
-  // 1. Instant local persistence
+  checkQuotaExceeded('Simpan Dokumentasi');
+
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      await setDoc(doc(db, 'documentations', item.id), item);
+    } catch (error) {
+      handleWriteQuotaError(error, 'Simpan Dokumentasi');
+      handleFirestoreError(error, OperationType.WRITE, `documentations/${item.id}`);
+    }
+  }
+
+  // Simpan ke local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
   const current = loadLocal<DocumentationItem[]>(
     STORAGE_KEYS.DOCUMENTATION,
     INITIAL_DOCUMENTATION
@@ -628,36 +703,28 @@ export async function saveDocumentationRecord(
     updated.unshift(item);
   }
   saveLocal(STORAGE_KEYS.DOCUMENTATION, updated);
-
-  // 2. Direct 100% Firestore Database persistence
-  const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
-    try {
-      await setDoc(doc(db, 'documentations', item.id), item);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `documentations/${item.id}`);
-    }
-  }
 }
 
 export async function deleteDocumentationRecord(id: string): Promise<void> {
-  // 1. Instant local persistence
+  checkQuotaExceeded('Hapus Dokumentasi');
+
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'documentations', id));
+    } catch (error) {
+      handleWriteQuotaError(error, 'Hapus Dokumentasi');
+      handleFirestoreError(error, OperationType.DELETE, `documentations/${id}`);
+    }
+  }
+
+  // Hapus dari local cache hanya jika operasi Firestore berhasil atau tidak melebihi kuota
   const current = loadLocal<DocumentationItem[]>(
     STORAGE_KEYS.DOCUMENTATION,
     INITIAL_DOCUMENTATION
   );
   const updated = current.filter((d) => d.id !== id);
   saveLocal(STORAGE_KEYS.DOCUMENTATION, updated);
-
-  // 2. Direct 100% Firestore Database deletion
-  const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
-    try {
-      await deleteDoc(doc(db, 'documentations', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `documentations/${id}`);
-    }
-  }
 }
 
 // ==================== SETTINGS (100% FIRESTORE CLIENT SDK) ====================
@@ -691,16 +758,19 @@ export async function fetchSettings(): Promise<AppSettings> {
 }
 
 export async function saveSettingsRecord(settings: AppSettings): Promise<void> {
-  saveLocal(STORAGE_KEYS.SETTINGS, settings);
+  checkQuotaExceeded('Simpan Pengaturan');
 
   const db = getFirestoreDb();
-  if (db && !quotaExceededState) {
+  if (db) {
     try {
       await setDoc(doc(db, 'settings', 'branding'), settings);
     } catch (error) {
+      handleWriteQuotaError(error, 'Simpan Pengaturan');
       handleFirestoreError(error, OperationType.WRITE, 'settings/branding');
     }
   }
+
+  saveLocal(STORAGE_KEYS.SETTINGS, settings);
 }
 
 // Convenient function aliases

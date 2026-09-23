@@ -173,8 +173,11 @@ export default function HotelMasterSection({
 
   const handleConfirmDelete = async () => {
     if (deleteHotelTarget) {
-      await onDeleteHotel(deleteHotelTarget.id);
-      setDeleteHotelTarget(null);
+      try {
+        await onDeleteHotel(deleteHotelTarget.id);
+      } finally {
+        setDeleteHotelTarget(null);
+      }
     }
   };
 

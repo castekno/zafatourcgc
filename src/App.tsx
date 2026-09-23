@@ -8,6 +8,7 @@ import DocumentationSection from './components/DocumentationSection';
 import Footer from './components/Footer';
 import AdminLoginModal from './components/AdminLoginModal';
 import AdminSettingsModal from './components/AdminSettingsModal';
+import { AdminQuotaAlertModal } from './components/AdminQuotaAlertModal';
 import {
   Hotel,
   UmrahPackage,
@@ -40,6 +41,8 @@ import {
   DEFAULT_APP_SETTINGS,
   testConnection,
   isFirestoreQuotaExceeded,
+  setFirestoreQuotaExceeded,
+  FirestoreQuotaExceededError,
 } from './firebase/service';
 
 export default function App() {
@@ -61,6 +64,55 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('hero');
+
+  // Admin Quota Alert Modal State
+  const [quotaAlert, setQuotaAlert] = useState<{
+    isOpen: boolean;
+    actionTitle: string;
+    message?: string;
+  }>({
+    isOpen: false,
+    actionTitle: '',
+    message: '',
+  });
+
+  // Helper untuk memvalidasi batas kuota Firebase sebelum & saat operasi Admin (Update & Delete)
+  const handleAdminActionWithQuotaProtection = async (
+    actionName: string,
+    actionFn: () => Promise<void>
+  ) => {
+    if (isFirestoreQuotaExceeded()) {
+      setQuotaAlert({
+        isOpen: true,
+        actionTitle: actionName,
+        message: `Batas kuota tulis harian database Firebase Firestore (Free Tier) telah tercapai hari ini. Operasi "${actionName}" dibatalkan untuk menjaga keutuhan data cloud.`,
+      });
+      throw new Error('QUOTA_EXCEEDED');
+    }
+
+    try {
+      await actionFn();
+    } catch (err: any) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const isQuota =
+        err instanceof FirestoreQuotaExceededError ||
+        errMsg.includes('resource-exhausted') ||
+        errMsg.includes('Quota limit exceeded') ||
+        errMsg.includes('Free daily write units') ||
+        err?.code === 'resource-exhausted';
+
+      if (isQuota) {
+        setFirestoreQuotaExceeded(true);
+        setQuotaAlert({
+          isOpen: true,
+          actionTitle: actionName,
+          message: `Batas kuota tulis harian database Firebase Firestore (Free Tier) telah habis saat mengeksekusi "${actionName}". Operasi dibatalkan secara otomatis demi menjaga keutuhan data.`,
+        });
+        throw new Error('QUOTA_EXCEEDED');
+      }
+      throw err;
+    }
+  };
 
   // Load data and automatically sync packages with live seat data
   const loadAllData = async () => {
@@ -126,21 +178,33 @@ export default function App() {
 
   const handleSyncPackages = async () => {
     try {
-      const rawSeats = await fetchLiveSeatData(true);
-      const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
-      setSeats(availableSeats);
-      const plmCgkSeats = availableSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
-      // true: sinkronisasi eksplisit oleh Admin disimpan ke cloud database jika kuota tersedia
-      const synced = await syncPackagesWithSeats(plmCgkSeats, true);
-      setPackages(synced);
-    } catch (err) {
-      console.error('Error manually syncing packages with seats:', err);
+      await handleAdminActionWithQuotaProtection('Sinkronisasi Data Seat ke Paket', async () => {
+        const rawSeats = await fetchLiveSeatData(true);
+        const availableSeats = rawSeats.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
+        setSeats(availableSeats);
+        const plmCgkSeats = availableSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
+        // true: sinkronisasi eksplisit oleh Admin disimpan ke cloud database jika kuota tersedia
+        const synced = await syncPackagesWithSeats(plmCgkSeats, true);
+        setPackages(synced);
+      });
+    } catch (err: any) {
+      if (err?.message !== 'QUOTA_EXCEEDED') {
+        console.error('Error manually syncing packages with seats:', err);
+      }
     }
   };
 
   const handleClearPackages = async () => {
-    await clearPackages();
-    setPackages([]);
+    try {
+      await handleAdminActionWithQuotaProtection('Hapus Semua Paket', async () => {
+        await clearPackages();
+        setPackages([]);
+      });
+    } catch (err: any) {
+      if (err?.message !== 'QUOTA_EXCEEDED') {
+        console.error('Error clearing packages:', err);
+      }
+    }
   };
 
   // Admin Login / Logout
@@ -156,47 +220,64 @@ export default function App() {
 
   // Hotels CRUD
   const handleSaveHotel = async (hotel: Hotel) => {
-    await saveHotel(hotel);
-    const updated = await getHotels();
-    setHotels(updated);
+    const isUpdate = hotels.some((h) => h.id === hotel.id);
+    await handleAdminActionWithQuotaProtection(isUpdate ? 'Update Hotel' : 'Tambah Hotel', async () => {
+      await saveHotel(hotel);
+      const updated = await getHotels();
+      setHotels(updated);
+    });
   };
 
   const handleDeleteHotel = async (id: string) => {
-    await deleteHotel(id);
-    const updated = await getHotels();
-    setHotels(updated);
+    await handleAdminActionWithQuotaProtection('Hapus Hotel', async () => {
+      await deleteHotel(id);
+      const updated = await getHotels();
+      setHotels(updated);
+    });
   };
 
   // Packages CRUD
   const handleSavePackage = async (pkg: UmrahPackage) => {
-    await savePackage(pkg);
-    const updated = await getPackages();
-    setPackages(updated);
+    const isUpdate = packages.some((p) => p.id === pkg.id);
+    await handleAdminActionWithQuotaProtection(isUpdate ? 'Update Paket' : 'Tambah Paket', async () => {
+      await savePackage(pkg);
+      const updated = await getPackages();
+      setPackages(updated);
+    });
   };
 
   const handleDeletePackage = async (id: string) => {
-    await deletePackage(id);
-    const updated = await getPackages();
-    setPackages(updated);
+    await handleAdminActionWithQuotaProtection('Hapus Paket', async () => {
+      await deletePackage(id);
+      const updated = await getPackages();
+      setPackages(updated);
+    });
   };
 
   // Documentation CRUD
   const handleSaveDoc = async (item: DocumentationItem) => {
-    await saveDocumentation(item);
-    const updated = await getDocumentations();
-    setDocumentations(updated);
+    const isUpdate = documentations.some((d) => d.id === item.id);
+    await handleAdminActionWithQuotaProtection(isUpdate ? 'Update Dokumentasi' : 'Tambah Dokumentasi', async () => {
+      await saveDocumentation(item);
+      const updated = await getDocumentations();
+      setDocumentations(updated);
+    });
   };
 
   const handleDeleteDoc = async (id: string) => {
-    await deleteDocumentation(id);
-    const updated = await getDocumentations();
-    setDocumentations(updated);
+    await handleAdminActionWithQuotaProtection('Hapus Dokumentasi', async () => {
+      await deleteDocumentation(id);
+      const updated = await getDocumentations();
+      setDocumentations(updated);
+    });
   };
 
   // Settings & Logo update (Saved in DB)
   const handleSaveSettings = async (newSettings: AppSettings) => {
-    await saveSettings(newSettings);
-    setSettings(newSettings);
+    await handleAdminActionWithQuotaProtection('Update Pengaturan & Logo', async () => {
+      await saveSettings(newSettings);
+      setSettings(newSettings);
+    });
   };
 
   return (
@@ -216,8 +297,11 @@ export default function App() {
 
       {/* Admin Notice when Firestore Free Tier Quota is Exceeded */}
       {isAdmin && isFirestoreQuotaExceeded() && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-800">
-          <strong>Pemberitahuan Admin:</strong> Batas kuota tulis Firestore harian (paket gratis Firebase) telah tercapai hari ini. Sistem otomatis beralih ke penyimpanan lokal (LocalStorage), data Anda tetap aman dan situs tetap beroperasi normal tanpa kendala.
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 text-center text-xs text-rose-800 flex items-center justify-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-rose-600 animate-pulse"></span>
+          <span>
+            <strong>Pemberitahuan Admin:</strong> Batas kuota tulis Firestore harian (20.000 writes/hari) telah tercapai. Operasi <strong>Update</strong> dan <strong>Delete</strong> dibatalkan demi keamanan data cloud hingga kuota di-reset otomatis besok (~14:00 WIB). Pengunjung tetap dapat melihat situs normal.
+          </span>
         </div>
       )}
 
@@ -244,7 +328,7 @@ export default function App() {
         />
 
         {/* Real-Time Live Seat Data (https://seat.zafatour.com/ with seats > 0) */}
-        <LiveSeatSection />
+        <LiveSeatSection packages={packages} />
 
         {/* Jadwal Shalat Real-Time Otomatis Berdasarkan Koordinat Gadget (Sebelum Group Dokumentasi) */}
         <PrayerScheduleSection
@@ -279,6 +363,14 @@ export default function App() {
         onClose={() => setIsSettingsModalOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+      />
+
+      {/* Admin Quota Exceeded Notification Modal */}
+      <AdminQuotaAlertModal
+        isOpen={quotaAlert.isOpen}
+        actionTitle={quotaAlert.actionTitle}
+        message={quotaAlert.message}
+        onClose={() => setQuotaAlert({ isOpen: false, actionTitle: '', message: '' })}
       />
     </div>
   );

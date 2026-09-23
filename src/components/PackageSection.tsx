@@ -160,15 +160,23 @@ export default function PackageSection({
       const seen = new Set<string>();
       const result: SeatSchedule[] = [];
       for (const item of exactActive) {
-        if (!seen.has(item.departureDate)) {
-          seen.add(item.departureDate);
-          result.push({ departureDate: item.departureDate, sisaSeat: item.sisaSeat });
+        // Bedakan berdasarkan No kursi jika ada, agar nama paket & tanggal sama (misal No. 31 & 33) tetap dimasukkan sebagai jadwal berbeda
+        const itemKey = item.no ? `no_${item.no}` : `${item.departureDate}_${item.sisaSeat}`;
+        if (!seen.has(itemKey)) {
+          seen.add(itemKey);
+          result.push({
+            no: item.no,
+            departureDate: item.departureDate,
+            sisaSeat: item.sisaSeat,
+          });
         }
       }
       result.sort((a, b) => {
         const da = normalizeDateToISO(a.departureDate) || a.departureDate;
         const db = normalizeDateToISO(b.departureDate) || b.departureDate;
-        return da.localeCompare(db);
+        const comp = da.localeCompare(db);
+        if (comp !== 0) return comp;
+        return (a.no || 0) - (b.no || 0);
       });
       return result;
     }
@@ -442,8 +450,11 @@ export default function PackageSection({
 
   const handleConfirmDelete = async () => {
     if (deletePkgTarget) {
-      await onDeletePackage(deletePkgTarget.id);
-      setDeletePkgTarget(null);
+      try {
+        await onDeletePackage(deletePkgTarget.id);
+      } finally {
+        setDeletePkgTarget(null);
+      }
     }
   };
 
@@ -698,7 +709,7 @@ export default function PackageSection({
                         <Calendar className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                         <span className="truncate">
                           {matchingSchedules.length > 0
-                            ? `${matchingSchedules.length} Pilihan Tanggal`
+                            ? `${matchingSchedules.length} Pilihan Jadwal`
                             : 'Paket Habis'}
                         </span>
                       </div>

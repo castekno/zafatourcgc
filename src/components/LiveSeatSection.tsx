@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useMemo } from 'react';
 import {
   Users,
   Search,
@@ -10,49 +10,62 @@ import {
   ArrowUp,
   ArrowDown,
   CheckCircle2,
-  Layers,
+  Filter,
+  ChevronDown,
+  X,
   Sparkles,
 } from 'lucide-react';
-import { SeatInfo } from '../types';
-import { fetchLiveSeatData, sortSeatsByGroup, isHajiKhususKemenag } from '../services/seatService';
+import { SeatInfo, UmrahPackage } from '../types';
+import {
+  fetchLiveSeatData,
+  sortSeatsByGroup,
+  isHajiKhususKemenag,
+  getLatestOfficialUpdate,
+} from '../services/seatService';
+import { isTitleMatchingSeatGroup } from '../utils/seatSync';
 
 type SortField = 'group' | 'no' | 'departureDate' | 'sisaSeat';
 type SortDirection = 'asc' | 'desc';
 
-export default function LiveSeatSection() {
+interface LiveSeatSectionProps {
+  packages?: UmrahPackage[];
+}
+
+export default function LiveSeatSection({ packages = [] }: LiveSeatSectionProps) {
   const searchInputId = useId();
+  const pkgFilterId = useId();
   const [seats, setSeats] = useState<SeatInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPackageTitle, setSelectedPackageTitle] = useState<string>('ALL');
   const [lastUpdated, setLastUpdated] = useState<string>('');
   const [officialUpdate, setOfficialUpdate] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Sorting state - DEFAULT: Sort by Group (A-Z) as requested
+  // Sorting state - DEFAULT: Sort by Group (A-Z)
   const [sortBy, setSortBy] = useState<SortField>('group');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Filter category
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | 'UMRAH' | 'HAJI KHUSUS'>('ALL');
 
+  // Daftar nama paket unik yang bersumber dari data paket
+  const packageTitles = useMemo(() => {
+    if (packages && packages.length > 0) {
+      return Array.from(new Set(packages.map((p) => (p.title || '').trim()))).filter(Boolean);
+    }
+    return [];
+  }, [packages]);
+
   const fetchSeatData = async (forceRefresh = false) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      // 1. Coba fetch API langsung untuk mendapatkan timestamp website resmi jika tersedia
-      try {
-        const apiRes = await fetch(`/api/seats?t=${Date.now()}`, { cache: 'no-cache' });
-        if (apiRes.ok) {
-          const json = await apiRes.json();
-          if (json.officialUpdate) {
-            setOfficialUpdate(json.officialUpdate);
-          }
-        }
-      } catch {
-        // Abaikan jika info update tidak didapat
-      }
-
       const data = await fetchLiveSeatData(forceRefresh);
+      const updateTime = getLatestOfficialUpdate();
+      if (updateTime) {
+        setOfficialUpdate(updateTime);
+      }
       // Pastikan hanya data dengan sisa seat > 0 dan BUKAN haji khusus kemenag
       const filtered = data.filter((s: SeatInfo) => s.sisaSeat > 0 && !isHajiKhususKemenag(s.group));
       setSeats(filtered);
@@ -93,6 +106,15 @@ export default function LiveSeatSection() {
     if (selectedCategory === 'UMRAH') {
       return !s.group.toUpperCase().includes('HAJI');
     }
+
+    // Filter berdasarkan picklist pilihan paket (jika dipilih)
+    if (selectedPackageTitle !== 'ALL') {
+      const matchPkg =
+        s.group.trim().toLowerCase() === selectedPackageTitle.trim().toLowerCase() ||
+        isTitleMatchingSeatGroup(selectedPackageTitle, s.group);
+      if (!matchPkg) return false;
+    }
+
     return true;
   });
 
@@ -240,22 +262,63 @@ export default function LiveSeatSection() {
               )}
             </div>
 
-            {/* Quick Button to Reset to Sort by Group */}
+            {/* Tombol Sort Tanggal */}
             <button
               type="button"
-              onClick={() => {
-                setSortBy('group');
-                setSortDirection('asc');
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
-                sortBy === 'group' && sortDirection === 'asc'
+              onClick={() => handleSort('departureDate')}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                sortBy === 'departureDate'
                   ? 'bg-blue-50 text-blue-700 border-blue-300 font-black ring-1 ring-blue-400'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
               }`}
+              title="Urutkan berdasarkan tanggal keberangkatan"
             >
-              <Layers className="w-3.5 h-3.5 text-blue-600" />
-              <span>Sort by Group (A-Z)</span>
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              <span>Sort Tanggal</span>
+              {sortBy === 'departureDate' && (
+                sortDirection === 'asc' ? <ArrowUp className="w-3 h-3 text-blue-600" /> : <ArrowDown className="w-3 h-3 text-blue-600" />
+              )}
             </button>
+
+            {/* Picklist Pilih Paket (Disebelah Sort Tanggal) */}
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex items-center">
+                <label htmlFor={pkgFilterId} className="sr-only">
+                  Pilih Paket
+                </label>
+                <Filter className="pointer-events-none absolute left-3 w-3.5 h-3.5 text-slate-400" />
+                <select
+                  id={pkgFilterId}
+                  value={selectedPackageTitle}
+                  onChange={(e) => setSelectedPackageTitle(e.target.value)}
+                  className={`appearance-none text-xs font-bold py-2 pl-8 pr-8 rounded-xl border shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer max-w-[210px] sm:max-w-[270px] truncate transition-all ${
+                    selectedPackageTitle !== 'ALL'
+                      ? 'bg-blue-50 text-blue-900 border-blue-300 ring-1 ring-blue-200 font-black'
+                      : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                  }`}
+                  title="Pilih nama paket sesuai data paket"
+                >
+                  <option value="ALL">Pilih Paket ({packageTitles.length})</option>
+                  {packageTitles.map((title) => (
+                    <option key={title} value={title}>
+                      {title}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 w-3.5 h-3.5 text-slate-400" />
+              </div>
+
+              {selectedPackageTitle !== 'ALL' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPackageTitle('ALL')}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 bg-white hover:bg-rose-50 rounded-lg border border-slate-200 transition-all text-xs cursor-pointer"
+                  title="Reset pilihan paket ke Semua"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

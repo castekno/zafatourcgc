@@ -13,24 +13,35 @@ import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
  * 3. UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI) (Rabu, 13 Januari 2027) -> Sisa: 11 Kursi (No. 19)
  */
 export const OFFICIAL_ZAFA_SEATS: SeatInfo[] = [
-  {
-    no: 16,
-    group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 9 November 2026',
-    sisaSeat: 1,
-  },
-  {
-    no: 17,
-    group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H',
-    departureDate: 'Senin, 16 November 2026',
-    sisaSeat: 2,
-  },
-  {
-    no: 19,
-    group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)',
-    departureDate: 'Rabu, 13 Januari 2027',
-    sisaSeat: 11,
-  },
+  { no: 11, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 26 Oktober 2026', sisaSeat: 1 },
+  { no: 17, group: 'UMRAH HEMAT BERKAH 11H GA-PLM 1448H', departureDate: 'Senin, 16 November 2026', sisaSeat: 4 },
+  { no: 20, group: 'UMRAH REGULER MAHABBAH 11H GA-PLM 1448H', departureDate: 'Senin, 23 November 2026', sisaSeat: 2 },
+  { no: 22, group: 'UMRAH LIBURAN (AWAL) SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 7 Desember 2026', sisaSeat: 41 },
+  { no: 23, group: 'UMRAH LIBURAN (AWAL) HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 7 Desember 2026', sisaSeat: 44 },
+  { no: 24, group: 'UMRAH LIBURAN (AWAL) REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 7 Desember 2026', sisaSeat: 38 },
+  { no: 25, group: 'UMRAH LIBURAN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 14 Desember 2026', sisaSeat: 36 },
+  { no: 26, group: 'UMRAH LIBURAN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 14 Desember 2026', sisaSeat: 40 },
+  { no: 27, group: 'UMRAH LIBURAN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 14 Desember 2026', sisaSeat: 42 },
+  { no: 28, group: 'UMRAH LIBURAN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 28 Desember 2026', sisaSeat: 34 },
+  { no: 29, group: 'UMRAH LIBURAN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 28 Desember 2026', sisaSeat: 24 },
+  { no: 30, group: 'UMRAH LIBURAN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 28 Desember 2026', sisaSeat: 31 },
+  { no: 31, group: 'UMRAH AWAL TAHUN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 4 Januari 2027', sisaSeat: 35 },
+  { no: 32, group: 'UMRAH AWAL TAHUN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 4 Januari 2027', sisaSeat: 34 },
+  { no: 33, group: 'UMRAH AWAL TAHUN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 4 Januari 2027', sisaSeat: 34 },
+  { no: 34, group: 'UMRAH AWAL TAHUN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 4 Januari 2027', sisaSeat: 34 },
+  { no: 35, group: 'UMRAH AWAL TAHUN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 11 Januari 2027', sisaSeat: 44 },
+  { no: 36, group: 'UMRAH AWAL TAHUN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 11 Januari 2027', sisaSeat: 26 },
+  { no: 37, group: 'UMRAH AWAL TAHUN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 11 Januari 2027', sisaSeat: 44 },
+  { no: 38, group: 'UMRAH PLUS TURKI 12H JT CGK 1448H (ESTIMASI)', departureDate: 'Rabu, 13 Januari 2027', sisaSeat: 9 },
+  { no: 39, group: 'UMRAH AWAL TAHUN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 25 Januari 2027', sisaSeat: 44 },
+  { no: 40, group: 'UMRAH AWAL TAHUN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 25 Januari 2027', sisaSeat: 41 },
+  { no: 41, group: 'UMRAH AWAL TAHUN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 25 Januari 2027', sisaSeat: 44 },
+  { no: 42, group: 'UMRAH RAMADHAN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 8 Februari 2027', sisaSeat: 44 },
+  { no: 43, group: 'UMRAH RAMADHAN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 8 Februari 2027', sisaSeat: 38 },
+  { no: 44, group: 'UMRAH RAMADHAN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 8 Februari 2027', sisaSeat: 40 },
+  { no: 45, group: 'UMRAH RAMADHAN SUPER HEMAT 12H GA-PLM 1448H', departureDate: 'Senin, 22 Februari 2027', sisaSeat: 44 },
+  { no: 46, group: 'UMRAH RAMADHAN REGULER MAHABBAH 12H GA-PLM 1448H', departureDate: 'Senin, 22 Februari 2027', sisaSeat: 44 },
+  { no: 47, group: 'UMRAH RAMADHAN HEMAT BERKAH 12H GA-PLM 1448H', departureDate: 'Senin, 22 Februari 2027', sisaSeat: 44 },
 ];
 
 export function isHajiKhususKemenag(text?: string): boolean {
@@ -53,6 +64,12 @@ export function isPlmOrCgk(text?: string): boolean {
 }
 
 const LOCAL_SEATS_CACHE = 'zafa_official_seats_cache_v8';
+
+let latestOfficialUpdate = '';
+
+export function getLatestOfficialUpdate(): string {
+  return latestOfficialUpdate;
+}
 
 /**
  * Sort data kursi berdasarkan Group secara alfabetis, lalu berdasarkan No/Tanggal
@@ -128,6 +145,9 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
 
     if (res.ok) {
       const json = await res.json();
+      if (json && json.officialUpdate) {
+        latestOfficialUpdate = json.officialUpdate;
+      }
       if (json && Array.isArray(json.data) && json.data.length > 0) {
         const valid = json.data
           .filter((item: any) => typeof item.sisaSeat === 'number' && item.sisaSeat > 0 && !isHajiKhususKemenag(item.group))

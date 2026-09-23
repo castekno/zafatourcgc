@@ -79,6 +79,8 @@ export default function AdminSettingsModal({
         setSavedSuccess(false);
         onClose();
       }, 1000);
+    } catch (err) {
+      console.error('Settings save cancelled or failed:', err);
     } finally {
       setSaving(false);
     }

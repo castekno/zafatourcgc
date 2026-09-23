@@ -176,6 +176,8 @@ export default function DocumentationSection({
 
       await onSaveDoc(docPayload);
       setIsFormOpen(false);
+    } catch (err) {
+      console.error('Error saving documentation:', err);
     } finally {
       setSaving(false);
     }
@@ -183,8 +185,11 @@ export default function DocumentationSection({
 
   const handleConfirmDelete = async () => {
     if (deleteDocTarget) {
-      await onDeleteDoc(deleteDocTarget.id);
-      setDeleteDocTarget(null);
+      try {
+        await onDeleteDoc(deleteDocTarget.id);
+      } finally {
+        setDeleteDocTarget(null);
+      }
     }
   };
 
