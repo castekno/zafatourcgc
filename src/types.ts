@@ -73,6 +73,28 @@ export interface SeatInfo {
   sisaSeat: number;
 }
 
+export interface LiveSeatBatch {
+  batchIndex: number;
+  no?: number;
+  departureDate: string;
+  sisaSeat: number;
+}
+
+export interface LiveSeatDoc {
+  id: string; // Format: pkg-<slug>-<YYYYMMDD>
+  packageSlug: string;
+  packageTitle: string;
+  group: string;
+  departureDate: string;
+  isoDate: string;
+  dateKey: string;
+  totalSisaSeat: number;
+  sisaSeat: number;
+  batches: LiveSeatBatch[];
+  schedules: LiveSeatBatch[];
+  updatedAt: string;
+}
+
 export interface AppSettings {
   logoUrl: string;
   branchName: string;

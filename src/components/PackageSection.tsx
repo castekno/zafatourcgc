@@ -157,20 +157,12 @@ export default function PackageSection({
     });
 
     if (exactActive.length > 0) {
-      const seen = new Set<string>();
-      const result: SeatSchedule[] = [];
-      for (const item of exactActive) {
-        // Bedakan berdasarkan No kursi jika ada, agar nama paket & tanggal sama (misal No. 31 & 33) tetap dimasukkan sebagai jadwal berbeda
-        const itemKey = item.no ? `no_${item.no}` : `${item.departureDate}_${item.sisaSeat}`;
-        if (!seen.has(itemKey)) {
-          seen.add(itemKey);
-          result.push({
-            no: item.no,
-            departureDate: item.departureDate,
-            sisaSeat: item.sisaSeat,
-          });
-        }
-      }
+      // Masukkan semua baris tanpa deduplikasi, karena jadwal dengan nama group, tanggal, maupun jumlah seat sama adalah jadwal nyata
+      const result: SeatSchedule[] = exactActive.map((item) => ({
+        no: item.no,
+        departureDate: item.departureDate,
+        sisaSeat: item.sisaSeat,
+      }));
       result.sort((a, b) => {
         const da = normalizeDateToISO(a.departureDate) || a.departureDate;
         const db = normalizeDateToISO(b.departureDate) || b.departureDate;
@@ -181,17 +173,47 @@ export default function PackageSection({
       return result;
     }
 
-    // 2. Jika tidak ada exact match di activeSeats, gunakan seatSchedules yang tersimpan langsung di dokumen paket
+    // 2. Pencocokan fleksibel (fuzzy match) dengan isTitleMatchingSeatGroup
+    const fuzzyActive = activeSeats.filter((s) => {
+      return isTitleMatchingSeatGroup(pkg.title, s.group);
+    });
+    if (fuzzyActive.length > 0) {
+      const result: SeatSchedule[] = fuzzyActive.map((item) => ({
+        no: item.no,
+        departureDate: item.departureDate,
+        sisaSeat: item.sisaSeat,
+      }));
+      result.sort((a, b) => {
+        const da = normalizeDateToISO(a.departureDate) || a.departureDate;
+        const db = normalizeDateToISO(b.departureDate) || b.departureDate;
+        const comp = da.localeCompare(db);
+        if (comp !== 0) return comp;
+        return (a.no || 0) - (b.no || 0);
+      });
+      return result;
+    }
+
+    // 3. Jika tidak ada di activeSeats online, gunakan seatSchedules yang tersimpan di dokumen paket
     if (pkg.seatSchedules && pkg.seatSchedules.length > 0) {
       return pkg.seatSchedules;
     }
 
-    // 3. Fallback departureDates jika ada
+    // 4. Fallback departureDates jika ada
     if (pkg.departureDates && pkg.departureDates.length > 0) {
       return pkg.departureDates.map((d) => ({
         departureDate: d,
         sisaSeat: 0,
       }));
+    }
+
+    // 5. Fallback single departureDate jika ada
+    if (pkg.departureDate && pkg.departureDate.trim().length > 0) {
+      return [
+        {
+          departureDate: pkg.departureDate,
+          sisaSeat: 0,
+        },
+      ];
     }
 
     return [];

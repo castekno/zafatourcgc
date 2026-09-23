@@ -145,8 +145,9 @@ export default function App() {
       // - If all dates are gone, departureDates becomes empty -> "Paket Habis"
       // - Category: "UMRAH", "HAJI", "HAJI KHUSUS"
       const plmCgkSeats = allSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
-      // false: pengunjung umum tidak menembak write Firestore berulang-ulang
-      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats, false);
+      // Sinkronisasi otomatis dengan Dirty Checking:
+      // Hanya menulis ke Firestore jika departureDates / jadwal seat terbukti ada perbedaan, 0 write jika sama persis
+      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats, true);
       setPackages(syncedPackages);
     } catch (err) {
       console.error('Error loading data:', err);

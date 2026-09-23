@@ -465,20 +465,48 @@ export async function syncPackagesFromSeatData(
       groupedSeats.set(key, { displayTitle: trimmedTitle, schedules: [] });
     }
     const entry = groupedSeats.get(key)!;
-    // JIKA NAMA PAKET SAMA DAN TANGGAL SAMA:
-    // Cek apakah nomor urut (seat.no) atau sisa seat berbeda (misal No. 31 dan No. 33 sama-sama tanggal Senin, 4 Januari 2027).
-    // Keduanya adalah jadwal/kloter berbeda dan harus tetap dimasukkan sebagai jadwal yang berbeda.
-    const isDuplicate = entry.schedules.some(
-      (s) =>
-        (seat.no && s.no === seat.no) ||
-        (!seat.no && s.departureDate === seat.departureDate && s.sisaSeat === seat.sisaSeat)
-    );
-    if (!isDuplicate) {
-      entry.schedules.push({
-        no: seat.no,
-        departureDate: seat.departureDate,
-        sisaSeat: seat.sisaSeat,
+    // BUKAN DUPLIKASI: Jika ada nama group, tanggal, maupun jumlah seat yang sama di data seat online,
+    // itu bukan duplikasi melainkan memang ada jadwal/kloter yang sama persis.
+    entry.schedules.push({
+      no: seat.no,
+      departureDate: seat.departureDate,
+      sisaSeat: seat.sisaSeat,
+    });
+  }
+
+  // 1b. Rekonsiliasi tambahan dari Firestore koleksi 'live_seats':
+  // Jika di live_seats terdapat jadwal/kloter yang belum tercakup di seats, tambahkan ke groupedSeats
+  const db = getFirestoreDb();
+  if (db) {
+    try {
+      const liveSeatsSnap = await getDocs(collection(db, 'live_seats'));
+      liveSeatsSnap.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (d && d.group && !isHajiKhususKemenag(d.group) && isPlmOrCgk(d.group)) {
+          const key = d.group.trim().toLowerCase();
+          const batchList = Array.isArray(d.batches) ? d.batches : Array.isArray(d.schedules) ? d.schedules : [];
+          for (const b of batchList) {
+            if (b && typeof b.sisaSeat === 'number' && b.sisaSeat > 0 && b.departureDate) {
+              if (!groupedSeats.has(key)) {
+                groupedSeats.set(key, { displayTitle: d.group.trim(), schedules: [] });
+              }
+              const entry = groupedSeats.get(key)!;
+              const alreadyExists = entry.schedules.some(
+                (s) => s.departureDate === b.departureDate && s.sisaSeat === b.sisaSeat && (s.no || 0) === (b.no || 0)
+              );
+              if (!alreadyExists) {
+                entry.schedules.push({
+                  no: b.no || 0,
+                  departureDate: b.departureDate,
+                  sisaSeat: b.sisaSeat,
+                });
+              }
+            }
+          }
+        }
       });
+    } catch {
+      // Abaikan jika pembacaan live_seats tidak berhasil
     }
   }
 
@@ -495,7 +523,6 @@ export async function syncPackagesFromSeatData(
 
   // 2. Ambil paket yang sudah ada dari database paket
   const existingPackages = await fetchPackages();
-  const db = getFirestoreDb();
   const existingMap = new Map<string, UmrahPackage>();
 
   for (const pkg of existingPackages) {
@@ -512,8 +539,14 @@ export async function syncPackagesFromSeatData(
 
   // 3. Proses setiap nama paket unik dari data seat
   for (const [key, entry] of groupedSeats.entries()) {
-    const dates = entry.schedules.map((s) => s.departureDate);
-    const primaryDate = dates[0] || '';
+    // Susun tanggal unik terurut kronologis
+    const uniqueDates = Array.from(new Set(entry.schedules.map((s) => s.departureDate))).filter(Boolean);
+    uniqueDates.sort((a, b) => {
+      const da = normalizeDateToISO(a) || a;
+      const db = normalizeDateToISO(b) || b;
+      return da.localeCompare(db);
+    });
+    const primaryDate = uniqueDates[0] || '';
     const existing = existingMap.get(key);
 
     if (existing) {
@@ -527,25 +560,54 @@ export async function syncPackagesFromSeatData(
           ? 'HAJI KHUSUS'
           : (currentCat || getCategoryFromTitle(existing.title));
 
-      const hasChanged =
-        existing.category !== normalizedCategory ||
-        existing.departureDate !== primaryDate ||
-        JSON.stringify(existing.departureDates || []) !== JSON.stringify(dates) ||
-        JSON.stringify(existing.seatSchedules || []) !== JSON.stringify(entry.schedules);
+      const existingDates = (
+        existing.departureDates && existing.departureDates.length > 0
+          ? existing.departureDates
+          : existing.departureDate ? [existing.departureDate] : []
+      ).map((d) => d.trim()).filter(Boolean);
+
+      const existingSchedules = existing.seatSchedules || [];
+
+      // DIRTY CHECKING (Cek apakah ada perubahan nyata):
+      // 1. Cek apakah daftar tanggal berubah
+      const datesChanged =
+        existingDates.length !== uniqueDates.length ||
+        existingDates.some((d, idx) => d !== uniqueDates[idx]);
+
+      // 2. Cek apakah jadwal / sisa kursi tiap kloter berubah
+      const schedsChanged =
+        existingSchedules.length !== entry.schedules.length ||
+        existingSchedules.some((s, idx) => {
+          const target = entry.schedules[idx];
+          return (
+            s.departureDate !== target.departureDate ||
+            s.sisaSeat !== target.sisaSeat ||
+            (s.no || 0) !== (target.no || 0)
+          );
+        });
+
+      // 3. Cek apakah primary date atau category berubah
+      const primaryDateChanged = (existing.departureDate || '') !== primaryDate;
+      const categoryChanged = existing.category !== normalizedCategory;
+
+      const hasChanged = datesChanged || schedsChanged || primaryDateChanged || categoryChanged;
 
       const updatedPkg: UmrahPackage = {
         ...existing,
         category: normalizedCategory,
         departureDate: primaryDate || '',
-        departureDates: dates,
+        departureDates: uniqueDates,
         seatSchedules: entry.schedules,
         updatedAt: hasChanged ? new Date().toISOString() : existing.updatedAt,
       };
       resultPackages.push(updatedPkg);
 
+      // PENTING: Hanya tulis ke Firestore JIKA DAN HANYA JIKA ada perubahan nyata (Dirty Checking)
+      // Jika data sama persis, TIDAK ADA penulisan ke Firestore (0 write) guna menghemat kuota!
       if (db && persistToFirestore && !quotaExceededState && hasChanged) {
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
+          console.info(`[Auto-Sync Firestore] Memperbarui departureDates paket '${updatedPkg.title}' (terdeteksi perubahan jadwal).`);
         } catch (err) {
           handleWriteQuotaError(err, 'Sinkronisasi Paket');
           handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
@@ -563,7 +625,7 @@ export async function syncPackagesFromSeatData(
         category: getCategoryFromTitle(entry.displayTitle),
         packagePhoto: '',
         departureDate: primaryDate,
-        departureDates: dates,
+        departureDates: uniqueDates,
         seatSchedules: entry.schedules,
         makkahHotelId: '',
         makkahHotelName: '',
@@ -599,8 +661,8 @@ export async function syncPackagesFromSeatData(
     }
   }
 
-  // 4. Sertakan juga paket di database yang tanggalnya sudah tidak ada di data seat online
-  // Kosongkan tanggal keberangkatan agar memunculkan info "Paket Habis"
+  // 4. Sertakan juga paket di database yang saat ini tidak tercantum di groupedSeats
+  // PENTING: JANGAN mengosongkan/menghapus jadwal yang sudah tersimpan di dokumen paket jika dokumen paket memang memiliki jadwal & sisa kursi!
   for (const [key, pkg] of existingMap.entries()) {
     if (isHajiKhususKemenag(pkg.title) || !isPlmOrCgk(pkg.title)) continue;
     if (!groupedSeats.has(key)) {
@@ -612,18 +674,23 @@ export async function syncPackagesFromSeatData(
           ? 'HAJI KHUSUS'
           : (currentCat || getCategoryFromTitle(pkg.title));
 
-      const hasChanged =
-        pkg.category !== normalizedCategory ||
-        pkg.departureDate !== '' ||
-        (pkg.departureDates && pkg.departureDates.length > 0) ||
-        (pkg.seatSchedules && pkg.seatSchedules.length > 0);
+      // Jika paket di database sudah memiliki jadwal atau tanggal, pertahankan utuh
+      const existingSchedules = pkg.seatSchedules && pkg.seatSchedules.length > 0 ? pkg.seatSchedules : [];
+      const existingDates =
+        pkg.departureDates && pkg.departureDates.length > 0
+          ? pkg.departureDates
+          : pkg.departureDate
+          ? [pkg.departureDate]
+          : [];
+
+      const hasChanged = pkg.category !== normalizedCategory;
 
       const updatedPkg: UmrahPackage = {
         ...pkg,
         category: normalizedCategory,
-        departureDate: '',
-        departureDates: [], // Tanggal sudah tidak ada di seat online
-        seatSchedules: [],
+        departureDate: pkg.departureDate || (existingDates[0] || ''),
+        departureDates: existingDates,
+        seatSchedules: existingSchedules,
         updatedAt: hasChanged ? new Date().toISOString() : pkg.updatedAt,
       };
       resultPackages.push(updatedPkg);

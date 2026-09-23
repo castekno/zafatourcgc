@@ -1,7 +1,27 @@
-import { SeatInfo } from '../types';
-import { getFirestoreDb, handleFirestoreError, isFirestoreQuotaExceeded, OperationType } from '../firebase/service';
+import { SeatInfo, LiveSeatDoc, LiveSeatBatch } from '../types';
+import {
+  getFirestoreDb,
+  handleFirestoreError,
+  isFirestoreQuotaExceeded,
+  OperationType,
+  slugifyPackageTitle,
+} from '../firebase/service';
 import { loadLocal, saveLocal } from '../firebase/storageHelper';
-import { collection, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { normalizeDateToISO } from '../utils/seatSync';
+
+/**
+ * Menghasilkan Document ID unik berbasis: pkg-<slug-group>-<YYYYMMDD>
+ * Contoh: "UMRAH AWAL TAHUN SUPER HEMAT 12H GA-PLM 1448H" + "Senin, 4 Januari 2027"
+ * -> "pkg-umrah-awal-tahun-super-hemat-12h-ga-plm-1448h-20270104"
+ */
+export function generateLiveSeatDocId(group: string, departureDate: string): string {
+  const slug = slugifyPackageTitle(group || '');
+  const iso = normalizeDateToISO(departureDate || '');
+  // Format YYYYMMDD dari ISO (2027-01-04 -> 20270104)
+  const dateKey = iso ? iso.replace(/-/g, '') : (departureDate || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  return `${slug}-${dateKey}`;
+}
 
 /**
  * DATA RESMI TERVERIFIKASI LANGSUNG DARI https://seat.zafatour.com/
@@ -161,6 +181,10 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
         if (valid.length > 0) {
           const sorted = sortSeatsByGroup(valid);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
+          // Sinkronkan ke Firestore live_seats secara otomatis di latar belakang
+          syncSeatsListToFirestore(sorted).catch((err) => {
+            console.warn('Latar belakang sinkronisasi live_seats ke Firestore:', err?.message || err);
+          });
           return sorted;
         }
       }
@@ -197,6 +221,9 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
         if (parsed.length > 0) {
           const sorted = sortSeatsByGroup(parsed);
           saveLocal(LOCAL_SEATS_CACHE, sorted);
+          syncSeatsListToFirestore(sorted).catch((err) => {
+            console.warn('Latar belakang sinkronisasi live_seats ke Firestore:', err?.message || err);
+          });
           return sorted;
         }
       }
@@ -213,8 +240,39 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
       if (!snap.empty) {
         const list: SeatInfo[] = [];
         snap.forEach((d) => {
-          const item = d.data() as SeatInfo;
-          if (item.sisaSeat > 0) list.push(item);
+          const data = d.data();
+          // Format baru: dokumen memiliki array batches atau schedules bertingkat
+          if (Array.isArray(data.batches) && data.batches.length > 0) {
+            for (const b of data.batches) {
+              if (b && typeof b.sisaSeat === 'number' && b.sisaSeat > 0) {
+                list.push({
+                  no: b.no || 0,
+                  group: data.group || data.packageTitle || '',
+                  departureDate: b.departureDate || data.departureDate || '',
+                  sisaSeat: b.sisaSeat,
+                });
+              }
+            }
+          } else if (Array.isArray(data.schedules) && data.schedules.length > 0) {
+            for (const s of data.schedules) {
+              if (s && typeof s.sisaSeat === 'number' && s.sisaSeat > 0) {
+                list.push({
+                  no: s.no || 0,
+                  group: data.group || data.packageTitle || '',
+                  departureDate: s.departureDate || data.departureDate || '',
+                  sisaSeat: s.sisaSeat,
+                });
+              }
+            }
+          } else if (typeof data.sisaSeat === 'number' && data.sisaSeat > 0) {
+            // Kompatibilitas mundur jika dokumen masih berformat lama
+            list.push({
+              no: data.no || 0,
+              group: data.group || data.packageTitle || '',
+              departureDate: data.departureDate || '',
+              sisaSeat: data.sisaSeat,
+            });
+          }
         });
         if (list.length > 0) {
           const sorted = sortSeatsByGroup(list);
@@ -241,18 +299,91 @@ export async function fetchLiveSeatData(forceRefresh = false): Promise<SeatInfo[
   return sortSeatsByGroup(OFFICIAL_ZAFA_SEATS);
 }
 
-// Fungsi sinkronisasi list kursi ke Firestore agar Firestore selalu terbarui (Hanya dipanggil manual bila diperlukan)
+/**
+ * Sinkronisasi data kursi ke Firestore collection 'live_seats'
+ * Menggunakan format dokumen: pkg-<slug-group>-<YYYYMMDD>
+ * Jika terdapat lebih dari 1 baris untuk tanggal yang sama, disimpan sebagai batches bertingkat.
+ * Membersihkan juga dokumen seat_XX format lama agar database bersih.
+ */
 export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void> {
   if (isFirestoreQuotaExceeded()) return;
   const db = getFirestoreDb();
   if (!db || !seats || seats.length === 0) return;
 
-  for (const seat of seats) {
-    try {
-      await setDoc(doc(db, 'live_seats', `seat_${seat.no}`), seat);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `live_seats/seat_${seat.no}`);
+  // Kelompokkan data kursi berdasarkan Document ID (pkg-<slug>-<YYYYMMDD>)
+  const groupedDocs = new Map<
+    string,
+    {
+      group: string;
+      departureDate: string;
+      isoDate: string;
+      dateKey: string;
+      packageSlug: string;
+      batches: LiveSeatBatch[];
     }
+  >();
+
+  for (const seat of seats) {
+    if (!seat || !seat.group || !seat.departureDate) continue;
+    const docId = generateLiveSeatDocId(seat.group, seat.departureDate);
+    const slug = slugifyPackageTitle(seat.group);
+    const iso = normalizeDateToISO(seat.departureDate) || '';
+    const dateKey = iso ? iso.replace(/-/g, '') : seat.departureDate.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+    if (!groupedDocs.has(docId)) {
+      groupedDocs.set(docId, {
+        group: seat.group,
+        departureDate: seat.departureDate,
+        isoDate: iso,
+        dateKey: dateKey,
+        packageSlug: slug,
+        batches: [],
+      });
+    }
+
+    const entry = groupedDocs.get(docId)!;
+    entry.batches.push({
+      batchIndex: entry.batches.length + 1,
+      no: seat.no,
+      departureDate: seat.departureDate,
+      sisaSeat: seat.sisaSeat,
+    });
+  }
+
+  // Simpan setiap dokumen ke collection 'live_seats'
+  for (const [docId, entry] of groupedDocs.entries()) {
+    try {
+      const totalSeats = entry.batches.reduce((sum, b) => sum + (b.sisaSeat || 0), 0);
+      const docPayload: LiveSeatDoc = {
+        id: docId,
+        packageSlug: entry.packageSlug,
+        packageTitle: entry.group,
+        group: entry.group,
+        departureDate: entry.departureDate,
+        isoDate: entry.isoDate,
+        dateKey: entry.dateKey,
+        totalSisaSeat: totalSeats,
+        sisaSeat: totalSeats,
+        batches: entry.batches,
+        schedules: entry.batches,
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'live_seats', docId), docPayload);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `live_seats/${docId}`);
+    }
+  }
+
+  // Bersihkan dokumen format lama 'seat_XX' jika ada di Firestore
+  try {
+    const existingSnap = await getDocs(collection(db, 'live_seats'));
+    for (const d of existingSnap.docs) {
+      if (d.id.startsWith('seat_')) {
+        await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+      }
+    }
+  } catch {
+    // Abaikan jika pembersihan lama gagal
   }
 }
 

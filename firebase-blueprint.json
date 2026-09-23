@@ -87,6 +87,26 @@
         "updatedAt": { "type": "string", "description": "Timestamp when updated" }
       },
       "required": ["id", "latitude", "longitude"]
+    },
+    "LiveSeat": {
+      "title": "LiveSeat",
+      "description": "Real-time seat quotas grouped by package slug and departure date key with nested batches",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Composite key: pkg-<slug>-<YYYYMMDD>" },
+        "packageSlug": { "type": "string", "description": "Slug of the package" },
+        "packageTitle": { "type": "string", "description": "Package commercial name" },
+        "group": { "type": "string", "description": "Seat group name from online seat data" },
+        "departureDate": { "type": "string", "description": "Formatted departure date" },
+        "isoDate": { "type": "string", "description": "ISO date YYYY-MM-DD" },
+        "dateKey": { "type": "string", "description": "Date key YYYYMMDD" },
+        "totalSisaSeat": { "type": "number", "description": "Total available seats for this date across all batches" },
+        "sisaSeat": { "type": "number", "description": "Primary/total seat count" },
+        "batches": { "type": "array", "description": "Tiered departure batches for the same date" },
+        "schedules": { "type": "array", "description": "List of seat schedules for this date" },
+        "updatedAt": { "type": "string", "description": "Timestamp when updated" }
+      },
+      "required": ["id", "packageSlug", "group", "departureDate", "totalSisaSeat"]
     }
   },
   "firestore": {
@@ -109,6 +129,10 @@
     "/prayer_settings/{configId}": {
       "schema": "PrayerConfig",
       "description": "Saved prayer settings and location data"
+    },
+    "/live_seats/{seatId}": {
+      "schema": "LiveSeat",
+      "description": "Real-time seat availability indexed by package slug and date with tiered batches"
     }
   }
 }
