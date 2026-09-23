@@ -147,10 +147,16 @@ export default function App() {
       const plmCgkSeats = allSeats.filter((s: SeatInfo) => isPlmOrCgk(s.group));
       // Sinkronisasi otomatis dengan Dirty Checking:
       // Hanya menulis ke Firestore jika departureDates / jadwal seat terbukti ada perbedaan, 0 write jika sama persis
-      const syncedPackages = await syncPackagesWithSeats(plmCgkSeats, true);
+      let syncedPackages: UmrahPackage[] = [];
+      try {
+        syncedPackages = await syncPackagesWithSeats(plmCgkSeats, true);
+      } catch (syncErr) {
+        console.warn('Sinkronisasi paket ke Firestore dilewati, beralih ke cache lokal:', syncErr);
+        syncedPackages = await syncPackagesWithSeats(plmCgkSeats, false);
+      }
       setPackages(syncedPackages);
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.warn('Peringatan saat memuat data awal, memuat dari penyimpanan lokal:', err);
     } finally {
       setLoading(false);
     }

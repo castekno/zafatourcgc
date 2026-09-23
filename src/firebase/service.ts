@@ -438,8 +438,10 @@ export async function syncPackagesFromSeatData(
   seats: SeatInfo[],
   persistToFirestore: boolean = false
 ): Promise<UmrahPackage[]> {
-  if (persistToFirestore) {
-    checkQuotaExceeded('Sinkronisasi Data Seat ke Cloud Firestore');
+  // Jika kuota tulis Firestore harian tercapai, alihkan ke mode hemat kuota (hanya sinkronisasi lokal/memori)
+  // agar pemuatan paket tidak pernah gagal atau memunculkan error fatal pada pengunjung.
+  if (persistToFirestore && isFirestoreQuotaExceeded()) {
+    persistToFirestore = false;
   }
 
   if (!seats || seats.length === 0) {
@@ -608,9 +610,19 @@ export async function syncPackagesFromSeatData(
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
           console.info(`[Auto-Sync Firestore] Memperbarui departureDates paket '${updatedPkg.title}' (terdeteksi perubahan jadwal).`);
-        } catch (err) {
-          handleWriteQuotaError(err, 'Sinkronisasi Paket');
-          handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
+        } catch (err: any) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (
+            errMsg.includes('resource-exhausted') ||
+            errMsg.includes('Quota limit exceeded') ||
+            err?.code === 'resource-exhausted'
+          ) {
+            setFirestoreQuotaExceeded(true);
+            persistToFirestore = false;
+            console.warn('[Auto-Sync Firestore] Batas kuota tulis Firestore tercapai, beralih ke penyimpanan lokal.');
+          } else {
+            console.warn(`[Auto-Sync Firestore] Gagal menulis paket ${updatedPkg.id}:`, errMsg);
+          }
         }
       }
     } else {
@@ -653,9 +665,19 @@ export async function syncPackagesFromSeatData(
       if (db && persistToFirestore && !quotaExceededState) {
         try {
           await setDoc(doc(db, 'packages', newPkg.id), newPkg);
-        } catch (err) {
-          handleWriteQuotaError(err, 'Sinkronisasi Paket');
-          handleFirestoreError(err, OperationType.WRITE, `packages/${newPkg.id}`);
+        } catch (err: any) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (
+            errMsg.includes('resource-exhausted') ||
+            errMsg.includes('Quota limit exceeded') ||
+            err?.code === 'resource-exhausted'
+          ) {
+            setFirestoreQuotaExceeded(true);
+            persistToFirestore = false;
+            console.warn('[Auto-Sync Firestore] Batas kuota tulis Firestore tercapai, beralih ke penyimpanan lokal.');
+          } else {
+            console.warn(`[Auto-Sync Firestore] Gagal membuat paket ${newPkg.id}:`, errMsg);
+          }
         }
       }
     }
@@ -695,9 +717,19 @@ export async function syncPackagesFromSeatData(
         try {
           await setDoc(doc(db, 'packages', updatedPkg.id), updatedPkg);
           console.info(`[Auto-Sync Firestore] Paket '${updatedPkg.title}' ditandai 'Paket Habis' karena kursi di seat online sudah 0.`);
-        } catch (err) {
-          handleWriteQuotaError(err, 'Sinkronisasi Paket');
-          handleFirestoreError(err, OperationType.WRITE, `packages/${updatedPkg.id}`);
+        } catch (err: any) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          if (
+            errMsg.includes('resource-exhausted') ||
+            errMsg.includes('Quota limit exceeded') ||
+            err?.code === 'resource-exhausted'
+          ) {
+            setFirestoreQuotaExceeded(true);
+            persistToFirestore = false;
+            console.warn('[Auto-Sync Firestore] Batas kuota tulis Firestore tercapai, beralih ke penyimpanan lokal.');
+          } else {
+            console.warn(`[Auto-Sync Firestore] Gagal memperbarui status paket ${updatedPkg.id}:`, errMsg);
+          }
         }
       }
     }
