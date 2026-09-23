@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, FormEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useMemo, useId, FormEvent, ChangeEvent } from 'react';
 import {
   Calendar,
   Plane,
@@ -16,6 +16,8 @@ import {
   Copy,
   RefreshCw,
   Maximize2,
+  ChevronDown,
+  Filter,
 } from 'lucide-react';
 import { UmrahPackage, Hotel, ArrivalAirportType, SeatInfo, SeatSchedule, PackageCategoryType } from '../types';
 import { fetchLiveSeatData } from '../services/seatService';
@@ -71,8 +73,10 @@ export default function PackageSection({
   const pkgMadinahHotel2InputId = useId();
   const pkgPhotoInputId = useId();
   const pkgNotesInputId = useId();
+  const pkgSelectFilterId = useId();
 
   const [categoryFilter, setCategoryFilter] = useState<'All' | PackageCategoryType>('All');
+  const [selectedPackageTitle, setSelectedPackageTitle] = useState<string>('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPkg, setEditingPkg] = useState<UmrahPackage | null>(null);
   const [deletePkgTarget, setDeletePkgTarget] = useState<{ id: string; title: string } | null>(null);
@@ -185,17 +189,13 @@ export default function PackageSection({
     return [];
   };
 
-  // Sorting: Default 'group' sesuai Group di https://seat.zafatour.com/ agar mudah mengeceknya
-  const [packageSortBy, setPackageSortBy] = useState<'group' | 'date'>('group');
-
+  // Sorting: Default sort by Group (A-Z) sesuai https://seat.zafatour.com/
   // Pastikan Haji Khusus Kemenag tidak pernah dimasukkan ke paket dan HANYA proses/tampilkan paket dengan unsur kata PLM dan CGK
   const sortedPackages = [...packages]
     .filter((p) => !isHajiKhususKemenag(p.title) && isPlmOrCgk(p.title))
     .sort((a, b) => {
-      if (packageSortBy === 'group') {
-        const groupComp = (a.title || '').localeCompare(b.title || '', 'id');
-        if (groupComp !== 0) return groupComp;
-      }
+      const groupComp = (a.title || '').localeCompare(b.title || '', 'id');
+      if (groupComp !== 0) return groupComp;
       const isoA = normalizeDateToISO(a.departureDate) || a.departureDate || '';
       const isoB = normalizeDateToISO(b.departureDate) || b.departureDate || '';
       if (!isoA && !isoB) return (a.title || '').localeCompare(b.title || '', 'id');
@@ -209,7 +209,35 @@ export default function PackageSection({
       return isoA.localeCompare(isoB);
     });
 
+  // List unique nama paket dari data paket yang tersedia (khusus rute PLM & CGK dan bukan Haji Khusus Kemenag)
+  const availablePackageTitles = useMemo(() => {
+    let list = packages.filter((p) => !isHajiKhususKemenag(p.title) && isPlmOrCgk(p.title));
+    if (categoryFilter !== 'All') {
+      list = list.filter((p) => {
+        const pCat = (p.category || '').toUpperCase();
+        if (categoryFilter === 'UMRAH') return pCat === 'UMRAH' || pCat === 'UMROH';
+        if (categoryFilter === 'HAJI') return pCat === 'HAJI';
+        if (categoryFilter === 'HAJI KHUSUS') return pCat === 'HAJI KHUSUS';
+        return pCat === categoryFilter;
+      });
+    }
+    const titles = list.map((p) => p.title.trim()).filter(Boolean);
+    return Array.from(new Set(titles)).sort((a, b) => a.localeCompare(b, 'id'));
+  }, [packages, categoryFilter]);
+
+  // Reset pilihan nama paket jika tidak ada di kategori yang sedang dipilih
+  useEffect(() => {
+    if (selectedPackageTitle !== 'All' && !availablePackageTitles.includes(selectedPackageTitle)) {
+      setSelectedPackageTitle('All');
+    }
+  }, [availablePackageTitles, selectedPackageTitle]);
+
   const filteredPackages = sortedPackages.filter((p) => {
+    // Filter berdasarkan Picklist Nama Paket yang dipilih
+    if (selectedPackageTitle !== 'All' && p.title.trim() !== selectedPackageTitle) {
+      return false;
+    }
+
     if (categoryFilter === 'All') return true;
     const pCat = (p.category || '').toUpperCase();
     if (categoryFilter === 'UMRAH') {
@@ -462,32 +490,44 @@ export default function PackageSection({
               ))}
             </div>
 
-            {/* Sort Toggle (Default: Group A-Z matching seat.zafatour.com) */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setPackageSortBy('group')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  packageSortBy === 'group'
-                    ? 'bg-white text-blue-900 shadow-sm'
-                    : 'text-slate-600 hover:text-blue-900'
-                }`}
-                title="Urutkan berdasarkan Group Nama Paket (A-Z) sesuai https://seat.zafatour.com/"
-              >
-                Sort: Group
-              </button>
-              <button
-                type="button"
-                onClick={() => setPackageSortBy('date')}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                  packageSortBy === 'date'
-                    ? 'bg-white text-blue-900 shadow-sm'
-                    : 'text-slate-600 hover:text-blue-900'
-                }`}
-                title="Urutkan berdasarkan Tanggal Keberangkatan"
-              >
-                Sort: Tanggal
-              </button>
+            {/* Picklist Pilih Paket */}
+            <div className="flex items-center gap-1.5">
+              <label htmlFor={pkgSelectFilterId} className="sr-only">
+                Pilih Nama Paket
+              </label>
+              <div className="relative flex items-center">
+                <Filter className="pointer-events-none absolute left-3 w-3.5 h-3.5 text-slate-400" />
+                <select
+                  id={pkgSelectFilterId}
+                  value={selectedPackageTitle}
+                  onChange={(e) => setSelectedPackageTitle(e.target.value)}
+                  className={`appearance-none text-xs font-bold py-2 pl-8 pr-8 rounded-xl border shadow-xs focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer max-w-[210px] sm:max-w-[270px] truncate transition-all ${
+                    selectedPackageTitle !== 'All'
+                      ? 'bg-blue-50 text-blue-900 border-blue-300 ring-1 ring-blue-200'
+                      : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700 border-slate-200'
+                  }`}
+                  title="Pilih dan filter paket berdasarkan Nama Paket"
+                >
+                  <option value="All">Pilih Paket ({availablePackageTitles.length})</option>
+                  {availablePackageTitles.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 w-3.5 h-3.5 text-slate-400" />
+              </div>
+
+              {selectedPackageTitle !== 'All' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPackageTitle('All')}
+                  className="p-1.5 text-slate-400 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-lg border border-slate-200 transition-all text-xs"
+                  title="Reset pilihan paket ke Semua Paket"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {isAdmin && (
@@ -522,19 +562,40 @@ export default function PackageSection({
           {filteredPackages.length === 0 ? (
             <div className="col-span-full text-center py-16 bg-white rounded-2xl border border-slate-200 p-8 shadow-sm">
               <Plane className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-              <h3 className="text-base font-bold text-slate-700">Belum Ada Paket Haji & Umroh di Database</h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Klik tombol <strong>&quot;Sinkronkan Seat&quot;</strong> untuk membaca dan membuat paket secara otomatis dari data Seat Online.
-              </p>
-              {isAdmin && onSyncWithSeats && (
-                <button
-                  onClick={handleManualSync}
-                  disabled={isSyncing}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-all"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>Sinkronkan Sekarang dari Seat Online</span>
-                </button>
+              {packages.length === 0 ? (
+                <>
+                  <h3 className="text-base font-bold text-slate-700">Belum Ada Paket Haji & Umroh di Database</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Klik tombol <strong>&quot;Sinkronkan Seat&quot;</strong> untuk membaca dan membuat paket secara otomatis dari data Seat Online.
+                  </p>
+                  {isAdmin && onSyncWithSeats && (
+                    <button
+                      onClick={handleManualSync}
+                      disabled={isSyncing}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-all"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>Sinkronkan Sekarang dari Seat Online</span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h3 className="text-base font-bold text-slate-700">Tidak Ditemukan Paket yang Sesuai</h3>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                    Tidak ada paket yang sesuai dengan filter atau nama paket yang dipilih.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPackageTitle('All');
+                      setCategoryFilter('All');
+                    }}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-all"
+                  >
+                    Tampilkan Semua Paket
+                  </button>
+                </>
               )}
             </div>
           ) : (
