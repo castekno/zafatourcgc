@@ -354,18 +354,66 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
     });
   }
 
-  // Simpan setiap dokumen ke collection 'live_seats'
+  // 1. Ambil dokumen live_seats yang sudah ada di Firestore untuk Dirty Checking
+  const existingMap = new Map<string, any>();
+  try {
+    const existingSnap = await getDocs(collection(db, 'live_seats'));
+    for (const d of existingSnap.docs) {
+      existingMap.set(d.id, d.data());
+    }
+  } catch (err) {
+    console.warn('[Dirty-Check Seat] Gagal membaca data live_seats lama:', err);
+  }
+
+  // 2. Simpan ke Firestore HANYA jika data kursi benar-benar berubah (Dirty Checking)
   for (const [docId, entry] of groupedDocs.entries()) {
     try {
       const validBatches = entry.batches.filter((b) => b && typeof b.sisaSeat === 'number' && b.sisaSeat > 0);
       const totalSeats = validBatches.reduce((sum, b) => sum + (b.sisaSeat || 0), 0);
 
-      // Pastikan hanya menulis dokumen jika kursi > 0
+      // Jika total kursi <= 0, pastikan dokumen dihapus bila sebelumnya ada
       if (totalSeats <= 0 || validBatches.length === 0) {
-        await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
+        if (existingMap.has(docId)) {
+          await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
+        }
         continue;
       }
 
+      // Cek apakah dokumen ini sudah ada di Firestore dan apakah isinya sama persis
+      const existing = existingMap.get(docId);
+      let hasChanged = true;
+
+      if (existing) {
+        const existingTotal = typeof existing.totalSisaSeat === 'number' ? existing.totalSisaSeat : existing.sisaSeat;
+        const existingBatches: any[] = Array.isArray(existing.batches)
+          ? existing.batches
+          : Array.isArray(existing.schedules)
+          ? existing.schedules
+          : [];
+
+        const totalMatches = existingTotal === totalSeats;
+        const batchesMatches =
+          existingBatches.length === validBatches.length &&
+          existingBatches.every((eb, idx) => {
+            const vb = validBatches[idx];
+            return (
+              eb.departureDate === vb.departureDate &&
+              eb.sisaSeat === vb.sisaSeat &&
+              (eb.no || 0) === (vb.no || 0)
+            );
+          });
+
+        if (totalMatches && batchesMatches) {
+          hasChanged = false;
+        }
+      }
+
+      // JIKA DATA KURSI MASIH SAMA: JANGAN TULIS KE FIRESTORE (0 write)
+      if (!hasChanged) {
+        continue;
+      }
+
+      // JIKA ADA PERUBAHAN (ATAU DOKUMEN BARU): Tulis ke Firestore
       const docPayload: LiveSeatDoc = {
         id: docId,
         packageSlug: entry.packageSlug,
@@ -381,24 +429,25 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
         updatedAt: new Date().toISOString(),
       };
       await setDoc(doc(db, 'live_seats', docId), docPayload);
+      console.info(`[Dirty-Check Seat] Memperbarui kursi ${entry.group} (${entry.departureDate}): ${totalSeats} kursi.`);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `live_seats/${docId}`);
     }
   }
 
-  // Bersihkan dokumen format lama 'seat_XX' atau dokumen yang kursinya sudah 0 dari Firestore
+  // 3. Bersihkan dokumen format lama 'seat_XX' atau dokumen yang kursinya sudah habis/0 dari Firestore
   try {
-    const existingSnap = await getDocs(collection(db, 'live_seats'));
-    for (const d of existingSnap.docs) {
-      if (d.id.startsWith('seat_')) {
-        await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
-      } else if (d.id.startsWith('pkg-')) {
+    for (const [docId, data] of existingMap.entries()) {
+      if (docId === 'meta_current' || docId === 'test_doc') continue;
+
+      if (docId.startsWith('seat_')) {
+        await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
+      } else if (docId.startsWith('pkg-')) {
         // HAPUS jika dokumen tidak tercantum dalam daftar aktif groupedDocs (artinya kursi sudah 0 atau jadwal sudah berakhir di seat.zafatour.com)
-        if (!groupedDocs.has(d.id)) {
-          await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+        if (!groupedDocs.has(docId)) {
+          await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
           continue;
         }
-        const data = d.data();
         if (
           !data ||
           typeof data.totalSisaSeat !== 'number' ||
@@ -406,7 +455,7 @@ export async function syncSeatsListToFirestore(seats: SeatInfo[]): Promise<void>
           (typeof data.sisaSeat === 'number' && data.sisaSeat <= 0) ||
           isHajiKhususKemenag(data.group || data.packageTitle || '')
         ) {
-          await deleteDoc(doc(db, 'live_seats', d.id)).catch(() => {});
+          await deleteDoc(doc(db, 'live_seats', docId)).catch(() => {});
         }
       }
     }
